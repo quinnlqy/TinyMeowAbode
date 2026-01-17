@@ -64,6 +64,7 @@ import * as THREE from 'three';
         // [新增] 用于存储跟随移动的物体（桌上的东西）
         let attachedItems = [];
         let longPressTimer = null, startPointer = new THREE.Vector2();
+        let inputManager = null;
         
         const obstacles = []; const placedFurniture = []; const cats = []; 
         let heartScore = 500; let currentCategory = 'floor'; let activeDecorId = { floor: null, wall: null }; let skyPanels = []; 
@@ -1263,6 +1264,8 @@ function renderShopItems(cat) {
 
 
         function updateCameraMovement(dt) {
+            if (!inputManager) return;
+            const moveKeys = inputManager.moveKeys;
             if (!(moveKeys.w || moveKeys.a || moveKeys.s || moveKeys.d)) return;
             const moveSpeed = 10.0 * dt;
             const displacement = new THREE.Vector3();
@@ -1393,16 +1396,22 @@ function renderShopItems(cat) {
                 //window.debugClearDiary = function() { console.log("待实现: 清空日记"); updateStatusText("Debug: 清空日记 (待实现)"); };
 
 
-                window.addEventListener('keydown', (e) => {
-                    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-                    const key = e.key.toLowerCase();
-                    if (key === 'r' && ghostMesh && currentItemData.type !== 'wall') { rotateItem(); }
-                    switch (key) { case 'w': moveKeys.w = true; break; case 'a': moveKeys.a = true; break; case 's': moveKeys.s = true; break; case 'd': moveKeys.d = true; break; }
+                // === InputManager 初始化 ===
+                inputManager = new InputManager(renderer, camera, controls);
+                inputManager.setCallbacks({
+                    onPointerMove: (e, raycaster) => onMove(e),
+                    onPointerDown: (e, raycaster) => onDown(e),
+                    onPointerUp: (e) => onUp(e),
+                    onRightClick: (e) => {
+                        if (mode === 'placing_new') cancelPlace();
+                        else if (mode === 'moving_old') cancelMove();
+                        else deselect();
+                    },
+                    onRotateKey: () => {
+                        if (ghostMesh && currentItemData.type !== 'wall') rotateItem();
+                    }
                 });
-                window.addEventListener('keyup', (e) => {
-                    const key = e.key.toLowerCase();
-                    switch (key) { case 'w': moveKeys.w = false; break; case 'a': moveKeys.a = false; break; case 's': moveKeys.s = false; break; case 'd': moveKeys.d = false; break; }
-                });
+                inputManager.bind();
                 
                 hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 2.0); 
                 scene.add(hemiLight);
@@ -1578,8 +1587,8 @@ function renderShopItems(cat) {
 
 
 
-                window.addEventListener('resize', onWindowResize); window.addEventListener('pointermove', onMove); window.addEventListener('pointerdown', onDown); window.addEventListener('pointerup', onUp);
-                window.addEventListener('contextmenu', (e)=>{ e.preventDefault(); if(mode==='placing_new') cancelPlace(); else if(mode==='moving_old') cancelMove(); else deselect(); });
+                window.addEventListener('resize', onWindowResize);
+                // 输入事件已由 InputManager 管理
                 
                 document.getElementById('btn-move').onclick=()=>{if(selectedObject)startMovingOld(selectedObject);hideContextMenu();}
                 document.getElementById('btn-delete').onclick=()=>{if(selectedObject)deleteSelected();hideContextMenu();}

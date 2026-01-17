@@ -1,6 +1,6 @@
 /**
  * InputManager.js - 统一输入管理
- * 处理鼠标、键盘、触摸输入，发送事件到游戏逻辑
+ * 处理鼠标、键盘、触摸输入的底层事件
  */
 
 import * as THREE from 'three';
@@ -13,7 +13,7 @@ export class InputManager {
         
         // 输入状态
         this.pointer = new THREE.Vector2();
-        this.startPointer = new THREE.Vector2();
+        this.startPointer = { x: 0, y: 0 };
         this.raycaster = new THREE.Raycaster();
         this.moveKeys = { w: false, a: false, s: false, d: false };
         
@@ -26,13 +26,11 @@ export class InputManager {
             onPointerDown: null,
             onPointerUp: null,
             onPointerMove: null,
-            onLongPress: null,
-            onShortClick: null,
             onRightClick: null,
-            onRotate: null
+            onRotateKey: null
         };
         
-        this._bindEvents();
+        this._bound = false;
     }
     
     /**
@@ -45,39 +43,62 @@ export class InputManager {
     /**
      * 绑定 DOM 事件
      */
-    _bindEvents() {
-        const canvas = this.renderer.domElement;
+    bind() {
+        if (this._bound) return;
+        this._bound = true;
         
-        // 鼠标/触摸事件
-        window.addEventListener('pointermove', this._onPointerMove.bind(this));
-        window.addEventListener('pointerdown', this._onPointerDown.bind(this));
-        window.addEventListener('pointerup', this._onPointerUp.bind(this));
-        window.addEventListener('contextmenu', this._onContextMenu.bind(this));
+        this._onPointerMove = this._handlePointerMove.bind(this);
+        this._onPointerDown = this._handlePointerDown.bind(this);
+        this._onPointerUp = this._handlePointerUp.bind(this);
+        this._onContextMenu = this._handleContextMenu.bind(this);
+        this._onKeyDown = this._handleKeyDown.bind(this);
+        this._onKeyUp = this._handleKeyUp.bind(this);
         
-        // 键盘事件
-        window.addEventListener('keydown', this._onKeyDown.bind(this));
-        window.addEventListener('keyup', this._onKeyUp.bind(this));
+        window.addEventListener('pointermove', this._onPointerMove);
+        window.addEventListener('pointerdown', this._onPointerDown);
+        window.addEventListener('pointerup', this._onPointerUp);
+        window.addEventListener('contextmenu', this._onContextMenu);
+        window.addEventListener('keydown', this._onKeyDown);
+        window.addEventListener('keyup', this._onKeyUp);
+    }
+    
+    /**
+     * 解绑事件
+     */
+    unbind() {
+        if (!this._bound) return;
+        this._bound = false;
+        
+        window.removeEventListener('pointermove', this._onPointerMove);
+        window.removeEventListener('pointerdown', this._onPointerDown);
+        window.removeEventListener('pointerup', this._onPointerUp);
+        window.removeEventListener('contextmenu', this._onContextMenu);
+        window.removeEventListener('keydown', this._onKeyDown);
+        window.removeEventListener('keyup', this._onKeyUp);
+    }
+    
+    /**
+     * 更新指针和射线
+     */
+    updatePointer(clientX, clientY) {
+        this.pointer.x = (clientX / window.innerWidth) * 2 - 1;
+        this.pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.pointer, this.camera);
     }
     
     /**
      * 鼠标移动
      */
-    _onPointerMove(e) {
-        // 更新指针位置
-        this.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-        this.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    _handlePointerMove(e) {
+        this.updatePointer(e.clientX, e.clientY);
         
         // 检测是否取消长按（移动距离过大）
         if (this.longPressTimer) {
             if (Math.hypot(e.clientX - this.startPointer.x, e.clientY - this.startPointer.y) > 5) {
-                this._cancelLongPress();
+                this.cancelLongPress();
             }
         }
         
-        // 更新射线
-        this.raycaster.setFromCamera(this.pointer, this.camera);
-        
-        // 触发回调
         if (this.callbacks.onPointerMove) {
             this.callbacks.onPointerMove(e, this.raycaster, this.pointer);
         }
@@ -86,64 +107,36 @@ export class InputManager {
     /**
      * 鼠标按下
      */
-    _onPointerDown(e) {
+    _handlePointerDown(e) {
         if (e.target !== this.renderer.domElement) return;
         
         this.startPointer.x = e.clientX;
         this.startPointer.y = e.clientY;
+        this.updatePointer(e.clientX, e.clientY);
         
-        // 中键旋转
-        if (e.button === 1) {
-            e.preventDefault();
-            if (this.callbacks.onRotate) {
-                this.callbacks.onRotate();
-            }
-            return;
-        }
-        
-        // 左键
-        if (e.button === 0) {
-            this.raycaster.setFromCamera(this.pointer, this.camera);
-            
-            // 启动长按检测
-            this.longPressTimer = setTimeout(() => {
-                this.longPressTimer = null;
-                if (this.callbacks.onLongPress) {
-                    this.callbacks.onLongPress(e, this.raycaster);
-                }
-            }, this.longPressDelay);
-            
-            if (this.callbacks.onPointerDown) {
-                this.callbacks.onPointerDown(e, this.raycaster);
-            }
+        if (this.callbacks.onPointerDown) {
+            this.callbacks.onPointerDown(e, this.raycaster, this.pointer);
         }
     }
     
     /**
      * 鼠标释放
      */
-    _onPointerUp(e) {
-        // 恢复视角控制
+    _handlePointerUp(e) {
         this.controls.enabled = true;
         
-        // 如果长按定时器还在，说明是短按
-        if (this.longPressTimer) {
-            this._cancelLongPress();
-            this.raycaster.setFromCamera(this.pointer, this.camera);
-            if (this.callbacks.onShortClick) {
-                this.callbacks.onShortClick(e, this.raycaster);
-            }
-        }
+        const wasLongPress = !this.longPressTimer;
+        this.cancelLongPress();
         
         if (this.callbacks.onPointerUp) {
-            this.callbacks.onPointerUp(e);
+            this.callbacks.onPointerUp(e, this.raycaster, wasLongPress);
         }
     }
     
     /**
      * 右键菜单
      */
-    _onContextMenu(e) {
+    _handleContextMenu(e) {
         e.preventDefault();
         if (this.callbacks.onRightClick) {
             this.callbacks.onRightClick(e);
@@ -153,15 +146,15 @@ export class InputManager {
     /**
      * 键盘按下
      */
-    _onKeyDown(e) {
+    _handleKeyDown(e) {
         if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
         
         const key = e.key.toLowerCase();
         
         // R 键旋转
         if (key === 'r') {
-            if (this.callbacks.onRotate) {
-                this.callbacks.onRotate();
+            if (this.callbacks.onRotateKey) {
+                this.callbacks.onRotateKey();
             }
             return;
         }
@@ -178,7 +171,7 @@ export class InputManager {
     /**
      * 键盘释放
      */
-    _onKeyUp(e) {
+    _handleKeyUp(e) {
         const key = e.key.toLowerCase();
         switch (key) {
             case 'w': this.moveKeys.w = false; break;
@@ -189,9 +182,20 @@ export class InputManager {
     }
     
     /**
+     * 启动长按定时器
+     */
+    startLongPress(callback) {
+        this.cancelLongPress();
+        this.longPressTimer = setTimeout(() => {
+            this.longPressTimer = null;
+            callback();
+        }, this.longPressDelay);
+    }
+    
+    /**
      * 取消长按定时器
      */
-    _cancelLongPress() {
+    cancelLongPress() {
         if (this.longPressTimer) {
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
@@ -199,14 +203,28 @@ export class InputManager {
     }
     
     /**
-     * 禁用视角控制（拖拽猫咪时）
+     * 检查长按是否还在等待
+     */
+    isWaitingLongPress() {
+        return this.longPressTimer !== null;
+    }
+    
+    /**
+     * 禁用视角控制（拖拽时）
      */
     disableControls() {
         this.controls.enabled = false;
     }
     
     /**
-     * 更新相机移动
+     * 启用视角控制
+     */
+    enableControls() {
+        this.controls.enabled = true;
+    }
+    
+    /**
+     * 更新相机移动 (WASD)
      */
     updateCameraMovement(dt) {
         if (!(this.moveKeys.w || this.moveKeys.a || this.moveKeys.s || this.moveKeys.d)) return;
@@ -229,19 +247,5 @@ export class InputManager {
         
         this.camera.position.add(displacement);
         this.controls.target.add(displacement);
-    }
-    
-    /**
-     * 获取射线
-     */
-    getRaycaster() {
-        return this.raycaster;
-    }
-    
-    /**
-     * 获取指针位置
-     */
-    getPointer() {
-        return this.pointer;
     }
 }
