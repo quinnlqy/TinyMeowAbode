@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫咪的家 - 阶段33: 逻辑修正与画质回归</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #e0f7fa; font-family: 'Microsoft YaHei', sans-serif; }
+        canvas { display: block; outline: none; }
+        
+        #loading-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s;}
+        #loading-text { font-size: 20px; color: #555; margin-bottom: 10px; }
+        #progress-bar { width: 200px; height: 5px; background: #ddd; margin-bottom: 15px; }
+        #progress-fill { width: 0%; height: 100%; background: #ffaa00; transition: width 0.2s; }
+        #force-start-btn { display: none; padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; }
+        
+        #shop-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 700px; background: rgba(255, 255, 255, 0.98); border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; user-select: none; z-index: 10; }
+        #tabs { display: flex; background: #f0f0f0; border-bottom: 1px solid #ddd; }
+        .tab { flex: 1; text-align: center; padding: 10px 0; cursor: pointer; font-size: 14px; color: #666; }
+        .tab.active { background: #fff; color: #333; font-weight: bold; border-bottom: 3px solid #ffaa00; }
+        #items-scroll { display: flex; gap: 12px; padding: 15px; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+        .item-btn { flex: 0 0 auto; width: 80px; height: 85px; border: 2px solid #eee; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; background: #fff; color: #333; position: relative; transition: all 0.2s; }
+        .item-btn.selected { border: 3px solid #ffaa00; background: #fff8e1; transform: translateY(-3px); }
+        .item-btn.disabled { filter: grayscale(100%); opacity: 0.6; cursor: not-allowed; }
+        .color-preview { width: 24px; height: 24px; border-radius: 50%; margin-bottom: 5px; border: 1px solid rgba(0,0,0,0.1); background-size: cover; }
+        .price-tag { margin-top: 4px; font-size: 11px; color: #e74c3c; font-weight: bold; background: #fff0f0; padding: 2px 6px; border-radius: 8px; }
+        
+        #heart-panel { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 20px; font-size: 18px; color: #e74c3c; font-weight: bold; z-index: 20; display:flex; gap:10px; align-items: center;}
+        .debug-btn { background: #555; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        .debug-btn:hover { background: #333; }
+
+        #tutorial { position: absolute; top: 20px; left: 20px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; pointer-events: none; z-index: 5; }
+        #context-menu { position: absolute; display: none; background: white; padding: 8px; border-radius: 8px; z-index: 100; flex-direction: column; gap: 5px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .context-btn { padding: 8px 16px; border: 1px solid #eee; background: #f9f9f9; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .btn-delete { color: red; background: #fff0f0; }
+        .status-valid { color: green; font-weight: bold; }
+        .status-invalid { color: red; font-weight: bold; }
+        .heart-float { position: absolute; color: #e74c3c; font-weight: bold; font-size: 20px; pointer-events: none; animation: floatUp 1.5s ease-out forwards; z-index: 30; }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-50px) scale(1.5); opacity: 0; } }
+        .emote-bubble { position: absolute; font-size: 24px; pointer-events: none; animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 25; }
+        @keyframes popUp { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+    </style>
+    <script>
+        window.onerror = function(msg) {
+            const div = document.getElementById('loading-text'); if(div) div.innerText = "Error: " + msg;
+            setTimeout(() => { if(document.getElementById('loading-screen')) document.getElementById('loading-screen').style.display = 'none'; }, 3000);
+            return false;
+        };
+    </script>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <div id="loading-text">资源加载中...</div>
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <button id="force-start-btn" onclick="forceStart()">⚠️ 跳过加载</button>
+    </div>
+
+    <div id="heart-panel">
+        ❤️ <span id="heart-count">500</span>
+        <div>
+            <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
+            <button class="debug-btn" onclick="debugResetCat()">重置猫CD</button>
+        </div>
+    </div>
+
+    <div id="tutorial">
+        <strong>V33 修正版</strong><br>
+        1. <strong>画质</strong>：已恢复 Phase 30 象牙白质感<br>
+        2. <strong>抚摸</strong>：播放动作2，烦了会走开<br>
+        3. <strong>快递</strong>：纸箱大小已适配<br>
+        <div style="margin-top:5px; border-top:1px solid #ccc; padding-top:5px;">
+            <span id="status-text">初始化...</span>
+        </div>
+    </div>
+
+    <div id="context-menu">
+        <div class="context-btn" id="btn-move">移动位置</div>
+        <div class="context-btn btn-delete" id="btn-delete">删除家具</div>
+        <div class="context-btn" id="btn-cancel">取消选中</div>
+    </div>
+
+    <div id="shop-panel">
+        <div id="tabs">
+            <div class="tab active" onclick="switchCategory('floor')">家具</div>
+            <div class="tab" onclick="switchCategory('small')">小物</div>
+            <div class="tab" onclick="switchCategory('wall')">墙壁</div>
+            <div class="tab" onclick="switchCategory('decor')">装修</div>
+        </div>
+        <div id="items-scroll"></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+        setTimeout(() => { const btn=document.getElementById('force-start-btn'); if(btn)btn.style.display='block'; }, 3000);
+
+        // --- 猫咪参数 ---
+        const CAT_CONFIG = { 
+            scale: 0.35, rotateX: 0, rotateY: 0, yOffset: 0,
+            // 动作映射：0=FallRight, 1=LiftLeg(摸), 2=Idle, 7=Walk
+            idleIndex: 2, 
+            walkIndex: 7, 
+            sleepIndex: 0, // 动作1：倒下
+            petIndex: 1    // 动作2：抬腿享受
+        };
+
+        let scene, camera, renderer, controls;
+        let raycaster, pointer, floorPlane, wallGroup;
+        
+        const loadedModels = {}; 
+        const textureLoader = new THREE.TextureLoader();
+        const gltfLoader = new GLTFLoader();
+        const objLoader = new OBJLoader();
+        
+        let mode = 'idle', ghostMesh = null, currentItemData = null, currentRotation = 0, canPlace = false;
+        let selectedObject = null, selectionBox = null, editingObjectOriginalPos = null, editingObjectOriginalQuat = null;
+        let longPressTimer = null, startPointer = new THREE.Vector2();
+        
+        const obstacles = []; 
+        const placedFurniture = []; 
+        const cats = []; 
+        let heartScore = 500; 
+        let currentCategory = 'floor'; 
+
+        // --- 核心：恢复好看的颜色 (V30配色) ---
+        // 象牙白: #EBE5D1 (RGB 235, 229, 209)
+        const DEFAULT_DECOR = { floor: { color: 0xF5F5DC, texture: null }, wall:  { color: 0xEBE5D1, texture: null } };
+        let activeDecorId = { floor: null, wall: null };
+
+        const FURNITURE_DB = [
+            { id: 'rug',      type: 'floor', layer: 0, name: '圆地毯', price: 10,  color: 0x3498db, size: {x:2, y:0.02, z:2}, modelFile: 'rug.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
+            { id: 'bed',      type: 'floor', layer: 1, name: '猫窝',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:1}, modelFile: 'bed.glb', modelScale: 1.0, canSleep: true },
+            { id: 'sofa',     type: 'floor', layer: 1, name: '大沙发', price: 150, color: 0xe74c3c, size: {x:3, y:1, z:1},   modelFile: 'sofa.glb', modelScale: 1.0, canSleep: true },
+            { id: 'cat_tree', type: 'floor', layer: 1, name: '猫爬架', price: 100, color: 0x8e44ad, size: {x:1, y:2, z:1},   modelFile: 'cat_tree.glb', modelScale: 1.0 },
+            { id: 'table',    type: 'floor', layer: 1, isSurface: true, surfaceHeight: 0.8, name: '木桌', price: 60,  color: 0x8d6e63, size: {x:1.5, y:0.8, z:1.5}, modelFile: 'table.glb', modelScale: 1.0 },
+            { id: 'mug',      type: 'small', layer: 2, name: '马克杯', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'mug.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'lamp',     type: 'small', layer: 2, name: '台灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'lamp.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'plant',    type: 'wall',  layer: 1, name: '壁挂藤', price: 20,  color: 0x2ecc71, size: {x:0.5, y:1, z:0.2}, modelFile: 'plant.glb', modelScale: 1.0 },
+            { id: 'painting', type: 'wall',  layer: 1, name: '风景画', price: 50,  color: 0xFFD700, size: {x:1, y:1, z:0.1}, modelFile: 'painting.glb', modelScale: 1.0 },
+            { id: 'window',   type: 'wall',  layer: 1, name: '落地窗', price: 120, color: 0x87CEEB, size: {x:1.5, y:2, z:0.2}, light: true, lightType: 'spot', modelFile: 'window_large.glb', modelScale: 1.0 },
+            { id: 'floor_wood', type: 'decor', name: '木纹地板', price: 50, color: 0x8d6e63, decorType: 'floor', textureFile: 'wood.jpg' }, 
+            { id: 'floor_tile', type: 'decor', name: '白瓷砖',   price: 50, color: 0xeeeeee, decorType: 'floor', textureFile: 'tile.jpg' },
+            { id: 'wall_pink',  type: 'decor', name: '温馨粉墙', price: 50, color: 0xffcdd2, decorType: 'wall',  textureFile: 'wallpaper.jpg' },
+            { id: 'wall_blue',  type: 'decor', name: '清爽蓝墙', price: 50, color: 0xb3e5fc, decorType: 'wall' }
+        ];
+
+        window.switchCategory = function(cat) {
+            currentCategory = cat;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            const tabs = document.querySelectorAll('.tab');
+            if(cat==='floor') tabs[0].classList.add('active'); 
+            else if(cat==='small') tabs[1].classList.add('active'); 
+            else if(cat==='wall') tabs[2].classList.add('active');
+            else tabs[3].classList.add('active'); 
+            renderShopItems(cat);
+        };
+
+        window.forceStart = function() { document.getElementById('loading-screen').remove(); startGame(); }
+        window.debugAddMoney = function() { updateMoney(100); };
+        window.debugResetCat = function() { cats.forEach(c => c.resetCooldown()); updateStatusText("猫咪不再生气了"); };
+
+        function loadAssets(callback) {
+            const loadingScreen = document.getElementById('loading-screen');
+            const progressFill = document.getElementById('progress-fill');
+            const files = [];
+            files.push({ key: 'cat', path: './assets/models/cat.glb' });
+            FURNITURE_DB.forEach(i => { if(i.modelFile) files.push({ key: i.id, path: './assets/models/'+i.modelFile }); });
+
+            if(files.length===0) { callback(); return; }
+            let count = 0;
+            files.forEach(f => {
+                const isObj = f.path.toLowerCase().endsWith('.obj');
+                const l = isObj ? objLoader : gltfLoader;
+                l.load(f.path, (data) => {
+                    const sceneData = isObj ? data : data.scene;
+                    const anims = isObj ? [] : data.animations;
+                    sceneData.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true; c.frustumCulled=false;}}); 
+                    loadedModels[f.key] = { scene: sceneData, animations: anims };
+                    count++; check();
+                }, undefined, (err)=>{ console.warn("Model Missing: "+f.path); count++; check(); });
+            });
+            function check() {
+                progressFill.style.width = Math.floor((count/files.length)*100)+'%';
+                if(count===files.length) { setTimeout(()=>{ if(loadingScreen) loadingScreen.remove(); callback(); }, 500); }
+            }
+        }
+
+        // Decor Functions
+        function applyDecorVisuals(item) {
+            const setMaterial = (mesh, config) => {
+                if (config.textureFile) {
+                    textureLoader.load('./assets/textures/' + config.textureFile, (tex) => {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+                        if (config.decorType === 'floor') tex.repeat.set(4, 4); else tex.repeat.set(2, 1);
+                        mesh.material.map = tex; mesh.material.color.setHex(0xffffff); mesh.material.needsUpdate = true;
+                    });
+                } else {
+                    mesh.material.map = null; mesh.material.color.setHex(config.color); mesh.material.needsUpdate = true;
+                }
+            };
+            if (item.decorType === 'floor') setMaterial(floorPlane, item);
+            else if (item.decorType === 'wall') wallGroup.forEach(wall => setMaterial(wall, item));
+        }
+        function restoreDecorState(type) {
+            const currentId = activeDecorId[type];
+            if (currentId) { const item = FURNITURE_DB.find(i => i.id === currentId); if (item) applyDecorVisuals(item); } 
+            else { const def = DEFAULT_DECOR[type]; applyDecorVisuals({ decorType: type, color: def.color, textureFile: def.texture }); }
+        }
+        function handleDecorClick(item) {
+            const type = item.decorType;
+            if (activeDecorId[type] === item.id) { activeDecorId[type] = null; restoreDecorState(type); updateStatusText("已恢复默认样式"); } 
+            else { if (heartScore >= item.price) { updateMoney(-item.price); activeDecorId[type] = item.id; applyDecorVisuals(item); updateStatusText("已装修: " + item.name); } else { alert("金钱不足！"); } }
+            renderShopItems('decor'); 
+        }
+
+        // --- 快递箱系统 (优化尺寸) ---
+        function spawnMysteryBox(sourceItem) {
+            // 参数 sourceItem 是触发这个箱子的家具数据，用来决定箱子大小
+            if (placedFurniture.find(f => f.userData.isBox)) return;
+            const x = (Math.random() - 0.5) * 8; const z = (Math.random() - 0.5) * 8;
+            
+            // 默认尺寸
+            let size = { x: 0.6, y: 0.5, z: 0.6 };
+            if (sourceItem) {
+                // 如果是地毯，给个中型箱子，不要扁的
+                if (sourceItem.id === 'rug') { size = { x: 1.0, y: 0.8, z: 0.5 }; }
+                else {
+                    // 其他家具，箱子稍微比家具大一点点，或者固定一个合理尺寸
+                    size.x = Math.max(0.5, sourceItem.size.x * 0.8);
+                    size.y = Math.max(0.5, sourceItem.size.y * 0.8);
+                    size.z = Math.max(0.5, sourceItem.size.z * 0.8);
+                }
+            }
+
+            const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z);
+            const boxMat = new THREE.MeshStandardMaterial({ color: 0xcd853f });
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set(x, size.y/2, z); box.castShadow = true; box.receiveShadow = true;
+            box.userData = { isBox: true, dbItem: { layer: 1, name: "快递箱", type: 'floor' } };
+            scene.add(box); placedFurniture.push(box);
+            showEmote(box.position, '📦');
+        }
+
+        // --- Cat Class (抚摸逻辑升级) ---
+        class Cat {
+            constructor(scene, color) {
+                this.scene = scene; this.state='idle'; this.targetPos=new THREE.Vector3(); this.interactTarget=null; this.timer=0; this.mixer=null; this.actions={}; this.isAnimated=false;
+                this.petCount = 0; this.patience = 5 + Math.floor(Math.random() * 6); // 5-10
+                this.angryTime = 0; // 生气冷却结束时间
+
+                this.mesh=new THREE.Group(); this.scene.add(this.mesh); this.downRay=new THREE.Raycaster(); this.downRay.ray.direction.set(0,-1,0); this.forwardRay=new THREE.Raycaster();
+
+                if (loadedModels['cat']) {
+                    const model = SkeletonUtils.clone(loadedModels['cat'].scene);
+                    model.scale.set(CAT_CONFIG.scale, CAT_CONFIG.scale, CAT_CONFIG.scale);
+                    model.position.y = CAT_CONFIG.yOffset;
+                    model.rotation.x = CAT_CONFIG.rotateX; model.rotation.y = CAT_CONFIG.rotateY;
+                    this.mesh.add(model);
+
+                    if (loadedModels['cat'].animations.length > 0) {
+                        this.isAnimated = true; this.mixer = new THREE.AnimationMixer(model);
+                        const anims = loadedModels['cat'].animations;
+                        const idleAnim = anims[CAT_CONFIG.idleIndex] || anims[0]; 
+                        const walkAnim = anims[CAT_CONFIG.walkIndex] || anims[1];
+                        const sleepAnim = anims[CAT_CONFIG.sleepIndex] || anims[0];
+                        const petAnim = anims[CAT_CONFIG.petIndex] || anims[0]; // 抚摸动作
+
+                        this.actions['idle'] = this.mixer.clipAction(idleAnim);
+                        this.actions['walk'] = this.mixer.clipAction(walkAnim);
+                        this.actions['sleep'] = this.mixer.clipAction(sleepAnim);
+                        this.actions['pet'] = this.mixer.clipAction(petAnim); // 动作2
+                        
+                        this.actions['sleep'].setLoop(THREE.LoopOnce); this.actions['sleep'].clampWhenFinished = true;
+                        this.actions['idle'].play(); this.currentAction = this.actions['idle'];
+                    }
+                } else { this.mesh.add(this.createBlockCat(color)); }
+                this.mesh.position.set(0, 0, 0); this.chooseNewAction();
+            }
+            createBlockCat(color) { const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:color}); const b=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.3,0.6),m); b.position.y=0.15; g.add(b); const h=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.3,0.3),m); h.position.set(0,0.4,0.4); g.add(h); return g; }
+            
+            update(dt) {
+                if(this.isAnimated && this.mixer) this.mixer.update(dt);
+                const rayOrigin=this.mesh.position.clone(); rayOrigin.y=5; this.downRay.set(rayOrigin, new THREE.Vector3(0,-1,0));
+                const hitCandidates=[floorPlane, ...placedFurniture.filter(f=>f.userData.dbItem&&f.userData.dbItem.layer===1)];
+                const hits=this.downRay.intersectObjects(hitCandidates, true); 
+                let targetY=0; if(hits.length>0) targetY=hits[0].point.y;
+                this.mesh.position.y += (targetY - this.mesh.position.y) * 0.2;
+
+                if(this.interactTarget) { if(!placedFurniture.includes(this.interactTarget)||!this.interactTarget.visible) { this.interrupt(); return; } }
+                
+                // 生气状态检查
+                if (this.state === 'angry') {
+                    if (Date.now() > this.angryTime) {
+                        this.state = 'idle'; // 气消了
+                        this.patience = 5 + Math.floor(Math.random() * 6);
+                        this.petCount = 0;
+                        updateStatusText("猫咪气消了");
+                    }
+                }
+
+                if(this.state==='walking') {
+                    this.playAction('walk');
+                    const dir=new THREE.Vector3().subVectors(this.targetPos,this.mesh.position); dir.y=0;
+                    const dist=dir.length();
+                    const forwardDir = dir.clone().normalize();
+                    this.forwardRay.set(this.mesh.position.clone().add(new THREE.Vector3(0,0.3,0)), forwardDir);
+                    const obstacles = placedFurniture.filter(f => f.userData.dbItem.layer > 0 && f !== this.interactTarget);
+                    const cols = this.forwardRay.intersectObjects(obstacles, true);
+                    if(cols.length>0 && cols[0].distance<0.5) { this.chooseNewAction(); return; }
+                    if(dist<0.1) {
+                        this.mesh.position.x=this.targetPos.x; this.mesh.position.z=this.targetPos.z;
+                        if(this.interactTarget) this.enterInteraction(); else { this.state='idle'; this.timer=2; }
+                    } else {
+                        dir.normalize(); this.mesh.position.add(dir.multiplyScalar(2.0*dt)); this.mesh.lookAt(this.targetPos.x, this.mesh.position.y, this.targetPos.z);
+                    }
+                } else if(this.state==='idle') {
+                    this.playAction('idle');
+                    this.timer-=dt; if(this.timer<=0) this.chooseNewAction();
+                } else if(this.state==='interacting') {
+                    if (this.interactTarget && this.interactTarget.userData.dbItem.canSleep) this.playAction('sleep');
+                    else this.playAction('idle');
+                    this.timer-=dt; if(Math.random()<0.01)spawnHeart(this.mesh.position); if(this.timer<=0)this.leaveInteraction();
+                } else if(this.state==='petting') {
+                    this.playAction('pet');
+                    // 保持这个动作，直到玩家停止摸或猫烦了
+                }
+            }
+            playAction(name) { if(this.isAnimated && this.currentAction !== this.actions[name]) { this.currentAction.fadeOut(0.2); this.actions[name].reset().fadeIn(0.2).play(); this.currentAction = this.actions[name]; } }
+            
+            pet() {
+                if (this.state === 'angry') {
+                    showEmote(this.mesh.position, '💢');
+                    return;
+                }
+
+                if (this.petCount >= this.patience) {
+                    showEmote(this.mesh.position, '💢'); 
+                    this.state = 'angry';
+                    this.angryTime = Date.now() + 15 * 60 * 1000; // 15分钟
+                    this.chooseNewAction(); // 气得走开
+                    updateStatusText("猫咪生气了 (15m CD)");
+                } else {
+                    this.petCount++;
+                    spawnHeart(this.mesh.position);
+                    showEmote(this.mesh.position, '😻');
+                    // 切换到享受状态
+                    this.state = 'petting';
+                    // 设置一个短暂的计时器，如果没继续摸，就恢复发呆
+                    if (this.resetTimer) clearTimeout(this.resetTimer);
+                    this.resetTimer = setTimeout(() => {
+                        if (this.state === 'petting') this.state = 'idle';
+                    }, 2000);
+                }
+            }
+            resetCooldown() {
+                this.angryTime = 0; this.state = 'idle'; this.petCount = 0; this.patience = 10;
+                showEmote(this.mesh.position, '❤️');
+            }
+
+            interrupt() { showEmote(this.mesh.position,'❓'); this.state='idle'; this.interactTarget=null; this.timer=1; } 
+            chooseNewAction() {
+                // 生气时不玩玩具
+                if (this.state === 'angry') {
+                    this.interactTarget=null; this.targetPos.set((Math.random()-0.5)*8,0,(Math.random()-0.5)*8); this.state='walking'; 
+                    return;
+                }
+
+                const boxes = placedFurniture.filter(f => f.userData.isBox);
+                const valid=placedFurniture.filter(f=>f.userData.dbItem.layer===1 && f.visible && f.userData.type!=='wall' && !f.userData.isBox);
+                let target = null;
+                if (boxes.length > 0 && Math.random() < 0.8) target = boxes[0];
+                else if (valid.length > 0 && Math.random() < 0.6) target = valid[Math.floor(Math.random()*valid.length)];
+
+                if(target) { this.interactTarget=target; this.targetPos.copy(this.interactTarget.position); this.state='walking'; }
+                else { this.interactTarget=null; this.targetPos.set((Math.random()-0.5)*8,0,(Math.random()-0.5)*8); this.state='walking'; }
+            }
+            enterInteraction() { 
+                this.state='interacting'; this.timer=5+Math.random()*5; 
+                if (this.interactTarget && this.interactTarget.userData.isBox) { this.timer = 15; showEmote(this.mesh.position, '📦'); }
+                if(this.interactTarget) this.mesh.rotation.y=Math.random()*Math.PI*2; 
+            }
+            leaveInteraction() { this.state='idle'; this.timer=0.5; }
+        }
+
+        function updateMoney(amt) { heartScore+=amt; document.getElementById('heart-count').innerText=heartScore; refreshShopState(); }
+        function refreshShopState() { 
+            document.querySelectorAll('.item-btn').forEach(b=>{
+                const p=parseInt(b.dataset.price); 
+                if(heartScore>=p) b.classList.remove('disabled'); else b.classList.add('disabled');
+            }); 
+        }
+        function spawnHeart(pos) { const v=pos.clone(); v.y+=1; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='heart-float'; e.innerText='❤ +5'; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); updateMoney(5); setTimeout(()=>e.remove(),1500); }
+        function showEmote(pos,t) { const v=pos.clone(); v.y+=1.2; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='emote-bubble'; e.innerText=t; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); setTimeout(()=>e.remove(),1000); }
+
+        window.startNewPlacement = function(id) {
+            const item = FURNITURE_DB.find(i=>i.id===id);
+            if(heartScore<item.price && !activeDecorId[item.decorType]) { alert("金钱不足"); return; } 
+            if (item.type === 'decor') { handleDecorClick(item); return; }
+            deselect(); mode='placing_new'; currentItemData=item; currentRotation=0;
+            createGhost(); 
+            updateStatusText("放置: "+item.name);
+            document.querySelectorAll('.item-btn').forEach(b=>b.classList.remove('selected'));
+        }
+        document.getElementById('btn-move').onclick=()=>{if(selectedObject)startMovingOld(selectedObject);hideContextMenu();}
+        document.getElementById('btn-delete').onclick=()=>{if(selectedObject)deleteSelected();hideContextMenu();}
+        document.getElementById('btn-cancel').onclick=()=>{deselect();hideContextMenu();}
+
+        function renderShopItems(cat) {
+            const c=document.getElementById('items-scroll'); c.innerHTML='';
+            let typeFilter = cat; if(cat==='small') typeFilter='small';
+            FURNITURE_DB.filter(i=>i.type===typeFilter).forEach(item=>{
+                const b=document.createElement('div'); b.className='item-btn'; b.dataset.price=item.price;
+                if (item.type === 'decor' && activeDecorId[item.decorType] === item.id) { b.classList.add('selected'); }
+                b.onclick=(e)=>{ e.stopPropagation(); if(!b.classList.contains('disabled')){ startNewPlacement(item.id); } };
+                if (item.type === 'decor') { b.onmouseenter = () => applyDecorVisuals(item); b.onmouseleave = () => restoreDecorState(item.decorType); }
+                const col=document.createElement('div'); col.className='color-preview'; 
+                if(item.textureFile) col.style.backgroundImage = `url(./assets/textures/${item.textureFile})`;
+                else col.style.background='#'+item.color.toString(16).padStart(6,'0');
+                const t=document.createElement('span'); t.innerText=item.name;
+                const p=document.createElement('div'); p.className='price-tag'; p.innerText='❤ '+item.price;
+                b.append(col,t,p); c.appendChild(b);
+            }); refreshShopState();
+        }
+
+        function createGhost() {
+            if(ghostMesh) scene.remove(ghostMesh);
+            const item = currentItemData;
+            if (item.modelFile && loadedModels[item.id]) {
+                const rawModel = loadedModels[item.id].scene.clone();
+                rawModel.traverse(c=>{ if(c.isMesh) c.material = new THREE.MeshStandardMaterial({color:item.color}); });
+                if (item.fixBottom) { const box = new THREE.Box3().setFromObject(rawModel); rawModel.position.y = -box.min.y; }
+                if (item.autoCenter) { const box = new THREE.Box3().setFromObject(rawModel); const c=new THREE.Vector3(); box.getCenter(c); rawModel.position.x-=c.x; rawModel.position.z-=c.z; }
+                ghostMesh = new THREE.Group(); ghostMesh.add(rawModel);
+                const s = item.modelScale || 1.0; ghostMesh.scale.set(s,s,s);
+            } else {
+                let mat = item.light ? new THREE.MeshStandardMaterial({color:item.color, emissive:item.color, emissiveIntensity:0.5, transparent:true, opacity:0.6}) : new THREE.MeshStandardMaterial({color:item.color, transparent:true, opacity:0.6});
+                let geo;
+                if (item.id === 'rug') { geo = new THREE.CylinderGeometry(item.size.x/2, item.size.x/2, item.size.y, 32); geo.translate(0, item.size.y/2, 0); } 
+                else { geo = new THREE.BoxGeometry(item.size.x, item.size.y, item.size.z); if(!item.modelFile) geo.translate(0, item.size.y/2, 0); }
+                ghostMesh = new THREE.Mesh(geo, mat);
+            }
+            ghostMesh.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.transparent = true; c.material.opacity = 0.5; } });
+            ghostMesh.position.set(0,-100,0);
+            if(item.type!=='wall') ghostMesh.rotation.y = currentRotation;
+            scene.add(ghostMesh);
+        }
+
+        function checkColl(isWall) {
+            ghostMesh.updateMatrixWorld(); const box=new THREE.Box3().setFromObject(ghostMesh); 
+            if (currentItemData.layer === 0) { box.min.x+=0.1; box.max.x-=0.1; box.min.z+=0.1; box.max.z-=0.1; } else { box.expandByScalar(-0.1); }
+            let col=false;
+            if(!isWall) for(let o of obstacles) if(box.intersectsBox(new THREE.Box3().setFromObject(o))) { col=true; break; }
+            if(!col) for(let f of placedFurniture) { 
+                if(mode==='moving_old'&&f===selectedObject)continue; 
+                const myL=currentItemData.layer; const otherL=f.userData.dbItem.layer;
+                if(myL===0 || otherL===0) continue; if(myL===2 && otherL===1) continue; if(myL===1 && otherL===2) continue; 
+                if(box.intersectsBox(new THREE.Box3().setFromObject(f))) { col=true; break; } 
+            }
+            if(ghostMesh.position.y<0 && currentItemData.layer !== 0) col=true; 
+            if(col) { ghostMesh.traverse(c=>{if(c.isMesh)c.material.color.setHex(0xff0000)}); canPlace=false; updateStatusText("位置冲突", "invalid"); } 
+            else { ghostMesh.traverse(c=>{if(c.isMesh) c.material.color.setHex(0xffffff); }); canPlace=true; updateStatusText("可放置", "valid"); }
+        }
+        
+        function confirmPlace() {
+            if(mode === 'placing_new') { if(heartScore >= currentItemData.price) updateMoney(-currentItemData.price); else { alert("金钱不足!"); cancelPlace(); return; } }
+            let m;
+            if (currentItemData.modelFile && loadedModels[currentItemData.id]) {
+                const raw = loadedModels[currentItemData.id].scene.clone();
+                if (currentItemData.fixBottom) { const box=new THREE.Box3().setFromObject(raw); raw.position.y=-box.min.y; }
+                if (currentItemData.autoCenter) { const box=new THREE.Box3().setFromObject(raw); const c=new THREE.Vector3(); box.getCenter(c); raw.position.x-=c.x; raw.position.z-=c.z; }
+                m = new THREE.Group(); m.add(raw);
+                const s = currentItemData.modelScale || 1.0; m.scale.set(s,s,s);
+            } else { m = ghostMesh.clone(); m.traverse(c=>{if(c.isMesh){ c.material=c.material.clone(); c.material.transparent=false; c.material.opacity=1; c.material.color.setHex(currentItemData.color); }}); }
+
+            m.position.copy(ghostMesh.position); m.rotation.copy(ghostMesh.rotation);
+            m.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; if (!currentItemData.modelFile.endsWith('.glb')) c.material.color.setHex(currentItemData.color); if(currentItemData.light) { c.material.emissiveIntensity = 0.8; if(!currentItemData.modelFile) c.material.emissive.setHex(currentItemData.color); } else { c.material.emissive.setHex(0); } } });
+            m.userData={type:currentItemData.type, dbItem: currentItemData, origScale: m.scale.clone()}; 
+            if(currentItemData.light) {
+                if (currentItemData.lightType === 'point') { const bulb = new THREE.PointLight(0xffaa00, 0.5, 3); bulb.position.set(0, 0.3, 0); bulb.castShadow = true; m.add(bulb); } 
+                else { const sl = new THREE.SpotLight(0xfff0dd, 5); sl.position.set(0,0,0); sl.target.position.set(0,0,5); sl.angle = Math.PI / 3; sl.penumbra = 0.5; sl.castShadow = true; m.add(sl); m.add(sl.target); }
+            }
+            scene.add(m); 
+            if (mode === 'placing_new' && currentItemData.layer === 1) { setTimeout(() => spawnMysteryBox(currentItemData), 1000); }
+            if(mode==='moving_old') { scene.remove(selectedObject); const i=placedFurniture.indexOf(selectedObject); if(i>-1)placedFurniture.splice(i,1); deselect(); }
+            placedFurniture.push(m); playBounce(m);
+            if(mode==='moving_old') { mode='idle'; scene.remove(ghostMesh); ghostMesh=null; updateStatusText("移动完成"); }
+        }
+
+        function onDown(e) { if(e.target!==renderer.domElement)return; startPointer.x=e.clientX; startPointer.y=e.clientY; if(mode==='idle' && e.button===0) { raycaster.setFromCamera(pointer, camera); for(let cat of cats) { const hits=raycaster.intersectObject(cat.mesh,true); if(hits.length>0){ cat.pet(); return; } } const hits=raycaster.intersectObjects(placedFurniture); if(hits.length>0) { const obj=hits[0].object; let root=obj; while(root.parent&&root.parent!==scene)root=root.parent; if(root.userData.isBox) { scene.remove(root); const i=placedFurniture.indexOf(root); if(i>-1)placedFurniture.splice(i,1); updateMoney(10); spawnHeart(root.position); updateStatusText("回收纸箱+10"); return; } longPressTimer=setTimeout(()=>selectObj(root,e.clientX,e.clientY),500); } } if(e.button===1&&ghostMesh&&currentItemData.type!=='wall'){e.preventDefault();rotateItem();return;} if(e.button===0 && (mode==='placing_new'||mode==='moving_old')&&canPlace&&ghostMesh) confirmPlace(); }
+        function onUp() { if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;} }
+        function handleLong(e) { /* handled in onDown */ }
+        function selectObj(m,x,y) { deselect(); let t=m; while(t.parent&&t.parent!==scene)t=t.parent; selectedObject=t; selectionBox=new THREE.BoxHelper(selectedObject,0xffffff); scene.add(selectionBox); showMenu(x,y); updateStatusText("选中: 家具"); }
+        function deselect() { selectedObject=null; if(selectionBox){scene.remove(selectionBox);selectionBox=null;} document.getElementById('context-menu').style.display='none'; }
+        function cancelPlace() { if(ghostMesh)scene.remove(ghostMesh); mode='idle'; ghostMesh=null; updateStatusText("浏览中"); }
+        function cancelMove() { if(mode==='moving_old'){if(ghostMesh)scene.remove(ghostMesh);if(selectedObject){selectedObject.position.copy(editingObjectOriginalPos);selectedObject.quaternion.copy(editingObjectOriginalQuat);selectedObject.visible=true;}} deselect(); mode='idle'; ghostMesh=null; }
+        function showMenu(x,y) { const m=document.getElementById('context-menu'); m.style.display='flex'; let px=x+10, py=y+10; if(px+100>window.innerWidth)px=window.innerWidth-110; if(py+100>window.innerHeight)py=window.innerHeight-110; m.style.left=px+'px'; m.style.top=py+'px'; }
+        function hideContextMenu() { document.getElementById('context-menu').style.display='none'; }
+        function updateStatusText(t,c) { const e=document.getElementById('status-text'); e.innerText=t; e.className=c==='valid'?'status-valid':(c==='invalid'?'status-invalid':''); }
+        function playBounce(m) { let f=0; const baseScale = m.userData.origScale || new THREE.Vector3(1,1,1); function a(){ if(f<20){const k=f/20; const s=0.1+(0.9)*(Math.sin(k*Math.PI*1.5)*0.2+k); m.scale.set(baseScale.x*s, baseScale.y*s, baseScale.z*s); f++; requestAnimationFrame(a); }else m.scale.copy(baseScale); } a(); }
+        function rotateItem() { currentRotation += Math.PI/2; if(ghostMesh) { ghostMesh.rotation.y = currentRotation; checkColl(false); } }
+        function startMovingOld(m) { mode = 'moving_old'; editingObjectOriginalPos=m.position.clone(); editingObjectOriginalQuat=m.quaternion.clone(); const savedData = m.userData.dbItem || FURNITURE_DB[0]; currentItemData = savedData; if(currentItemData.type!=='wall') currentRotation=m.rotation.y; else currentRotation=0; createGhost(); m.visible=false; updateStatusText("正在移动..."); }
+        function deleteSelected() { if(!selectedObject)return; scene.remove(selectedObject); const i=placedFurniture.indexOf(selectedObject); if(i>-1)placedFurniture.splice(i,1); deselect(); }
+        function onMove(e) { if(longPressTimer) { if(Math.hypot(e.clientX-startPointer.x, e.clientY-startPointer.y)>5) { clearTimeout(longPressTimer); longPressTimer=null; } } pointer.x=(e.clientX/window.innerWidth)*2-1; pointer.y=-(e.clientY/window.innerHeight)*2+1; if((mode==='placing_new'||mode==='moving_old') && ghostMesh) { raycaster.setFromCamera(pointer, camera); if(currentItemData.type==='wall') { const hits = raycaster.intersectObjects(obstacles); if(hits.length>0) { const h=hits[0]; const n=h.face.normal; if(Math.abs(n.y)>0.5) return; const pos=h.point.clone().add(n.clone().multiplyScalar(currentItemData.size.z/2+0.01)); if(Math.abs(n.x)>0.5) { pos.y=Math.round(pos.y/0.5)*0.5; pos.z=Math.round(pos.z/0.5)*0.5; } else { pos.x=Math.round(pos.x/0.5)*0.5; pos.y=Math.round(pos.y/0.5)*0.5; } const hh=currentItemData.size.y/2; if(pos.y<hh) pos.y=hh; if(pos.y+hh>3) pos.y=3-hh; ghostMesh.position.copy(pos); ghostMesh.lookAt(pos.clone().add(n)); checkColl(true); } return; } let onTable = false; if(currentItemData.layer === 2) { const hits = raycaster.intersectObjects(placedFurniture.filter(f=>f.visible && f.userData.dbItem.layer===1)); if(hits.length > 0) { const hit = hits[0]; ghostMesh.position.set(hit.point.x, hit.point.y, hit.point.z); ghostMesh.rotation.set(0, currentRotation, 0); checkColl(false); onTable = true; } } if(!onTable) { const hits = raycaster.intersectObject(floorPlane); if(hits.length>0) { const p=hits[0].point; ghostMesh.position.set(Math.round(p.x/0.5)*0.5, 0, Math.round(p.z/0.5)*0.5); ghostMesh.rotation.set(0, currentRotation, 0); checkColl(false); } } } }
+
+        function init() { loadAssets(() => { updateStatusText("开始游戏"); startGame(); }); }
+
+        function startGame() {
+            document.getElementById('heart-count').innerText = heartScore;
+            window.switchCategory('floor');
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputColorSpace = THREE.SRGBColorSpace; 
+            document.body.appendChild(renderer.domElement);
+            
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0xe0f7fa);
+            const aspect=window.innerWidth/window.innerHeight; const d=12;
+            camera = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 1, 1000);
+            camera.position.set(20, 20, 20); camera.lookAt(0,0,0);
+            controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxPolarAngle = Math.PI/2.1;
+            
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 1.0); scene.add(hemiLight);
+            const dl = new THREE.DirectionalLight(0xffdfba, 1.2); dl.position.set(15,25,10); dl.castShadow=true;
+            dl.shadow.camera.left=-15; dl.shadow.camera.right=15; dl.shadow.camera.top=15; dl.shadow.camera.bottom=-15; scene.add(dl);
+            raycaster = new THREE.Raycaster(); pointer = new THREE.Vector2();
+            
+            const fg=new THREE.PlaneGeometry(12,12); const fm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.floor.color});
+            floorPlane=new THREE.Mesh(fg, fm); floorPlane.rotation.x=-Math.PI/2; floorPlane.receiveShadow=true; scene.add(floorPlane);
+            const gh=new THREE.GridHelper(12,24,0xffffff,0xffffff); gh.position.y=0.01; gh.material.opacity=0.2; gh.material.transparent=true; scene.add(gh);
+            const wm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.wall.color});
+            const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3,0.5), wm); w1.position.set(0,1.5,-5.25); w1.receiveShadow=true; w1.castShadow=true; scene.add(w1); obstacles.push(w1);
+            const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3,10), wm); w2.position.set(-5.25,1.5,0); w2.receiveShadow=true; w2.castShadow=true; scene.add(w2); obstacles.push(w2);
+            wallGroup = [w1, w2];
+            
+            cats.push(new Cat(scene, 0xffa502));
+
+            window.addEventListener('resize', ()=> { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+            window.addEventListener('pointermove', onMove); window.addEventListener('pointerdown', onDown); window.addEventListener('pointerup', onUp);
+            window.addEventListener('contextmenu', (e)=>{ e.preventDefault(); if(mode==='placing_new') cancelPlace(); else if(mode==='moving_old') cancelMove(); else deselect(); });
+            window.addEventListener('keydown', (e)=>{ if((e.key==='r'||e.key==='R') && ghostMesh && currentItemData.type!=='wall') rotateItem(); });
+            animate();
+        }
+        
+        let lastTime=0;
+        function animate(time) {
+            requestAnimationFrame(animate); const dt=(time-lastTime)/1000; lastTime=time;
+            controls.update(); if(selectionBox) selectionBox.material.opacity=0.5+Math.sin(time*0.005)*0.5;
+            for(const cat of cats) cat.update(dt||0.016);
+            renderer.render(scene, camera);
+        }
+        
+        init();
+    </script>
+</body>
+</html>

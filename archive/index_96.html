@@ -1,0 +1,3085 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫咪的家 - V91 细节精修版</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #e0f7fa; font-family: 'Microsoft YaHei', sans-serif; transition: background-color 1s; }
+        canvas { display: block; outline: none; }
+        
+        #loading-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #fff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s;}
+        #loading-text { font-size: 20px; color: #555; margin-bottom: 10px; }
+        #progress-bar { width: 200px; height: 5px; background: #ddd; margin-bottom: 15px; }
+        #progress-fill { width: 0%; height: 100%; background: #ffaa00; transition: width 0.2s; }
+        #force-start-btn { display: none; padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; margin-top: 10px;}
+        
+        #debug-console { 
+		position: absolute; top: 10px; left: 50%; transform: translateX(-50%); 
+		width: 80%; max-height: 150px; overflow-y: auto; 
+		background: rgba(0, 0, 0, 0.7); color: #0f0; 
+		padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; 
+		z-index: 10001; pointer-events: auto; display: none; 
+		}
+        .log-error { color: #ff5555; font-weight: bold; }
+        .log-warn { color: #ffaa00; }
+
+        #debug-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+            z-index: 100;
+        }
+        /* 复用之前的 debug-btn 样式，稍微调整一下 */
+        .debug-btn {
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .debug-btn:hover { background: rgba(0, 0, 0, 0.8); }
+
+
+        /* === HUD 容器布局 === */
+        #hud-top-left {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px; /* 组件间距 */
+            z-index: 50;
+            pointer-events: none; /* 让鼠标能点穿空白区域 */
+        }
+        #hud-top-left > div {
+            pointer-events: auto; /* 组件本身可点击 */
+        }
+
+        /* === HUD 容器布局 === */
+        #hud-top-left {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* 稍微紧凑一点 */
+            z-index: 50;
+            pointer-events: none; 
+        }
+        #hud-top-left > div {
+            pointer-events: auto; 
+        }
+
+        /* ================= 1. 时间组件 (Time Widget) ================= */
+        #time-widget { 
+            position: relative; 
+            width: 130px; 
+            height: 130px; /* 这是一个正圆形区域 */
+            margin-bottom: 5px; /* 给下面留点空隙 */
+        }
+        
+        #time-bg {
+            width: 100%; 
+            height: 100%;
+            background: url('./assets/ui/time_bg.png') no-repeat center center;
+            background-size: contain; 
+            
+            /* 文字布局 */
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center;
+            
+            /* 文字样式 */
+            color: #6d4c41; 
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 900;
+            
+            /* [微调] 根据你的底图，文字整体可能需要稍微往上或往下提一点 */
+            padding-top: 5px; 
+        }
+        
+        #time-ampm { 
+            font-size: 16px; 
+            opacity: 0.6; 
+            line-height: 1;
+            margin-bottom: -2px; /* 紧贴时间 */
+        }
+        #time-text-display { 
+            font-size: 32px; 
+            line-height: 1; 
+            letter-spacing: -1px;
+        }
+
+        /* 太阳/月亮图标容器 (附着在右上角) */
+        #weather-icon-container {
+            position: absolute;
+            top: 0px; 
+            right: 0px; /* 挂在右上角 */
+            width: 45px; 
+            height: 45px;
+            background: url('./assets/ui/weather_bg.png') no-repeat center/contain;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.2s;
+            z-index: 10; /* 在最上层 */
+        }
+        #weather-icon-container:hover { transform: scale(1.1); }
+        #weather-icon-img { 
+            /* [修改] 让图片撑满容器 */
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; /* 铺满 */
+        }
+
+        /* 滑块气泡 (默认隐藏) */
+        #time-popover {
+            position: absolute;
+            left: 100%; /* 在时间组件右侧 */
+            top: 10px;
+            margin-left: 10px;
+            background: rgba(255,255,255,0.9);
+            padding: 8px 12px;
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s;
+            pointer-events: auto;
+            width: 140px; /* 固定宽度防止抖动 */
+        }
+        #time-popover.hidden { 
+            opacity: 0; 
+            visibility: hidden; 
+            transform: translateX(-10px); /* 隐藏时稍微往左缩一下 */
+        }
+        #time-slider-hud { width: 100px; cursor: pointer; accent-color: #ffaa00; }
+        #time-reset-btn {
+            background: none; border: none; font-size: 18px; cursor: pointer; color: #999; padding: 0;
+        }
+
+/* ================= 2. 爱心组件 (Heart Widget) ================= */
+        #heart-widget { 
+            position: relative;
+            /* [修改] 调整宽高比，防止背景拉伸 */
+            /* 假设背景图是长条形的，高度55px足够了 */
+            width: 200px; 
+            height: 65px; 
+            margin-top: -15px; 
+            z-index: 5; 
+        }
+        #heart-bg {
+            width: 100%; height: 100%;
+            background: url('./assets/ui/heart_bar_bg.png') no-repeat left center;
+            
+            /* [关键修复] 使用 contain 保持原图比例，绝不拉伸 */
+            background-size: contain; 
+            
+            display: flex; align-items: center;
+            
+            /* [调整] 因为图标变小了，左边距适当减小 */
+            padding-left: 75px; 
+            box-sizing: border-box;
+            padding-bottom: 0px; 
+        }
+        
+        /* 独立的爱心图标 */
+        #heart-icon-img { 
+            position: absolute;
+            left: 14px; 
+            top: 15px; /* 垂直居中微调 */
+            
+            /* [缩小] 改回精致的大小 */
+            width: 38px; 
+            height: 38px; 
+            
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.2));
+            z-index: 6;
+        }
+        #heart-text-display { 
+            /* [调整] 字体大小适配新的高度 */
+            font-size: 22px; 
+            color: #d35400; 
+            font-weight: 800; 
+        }
+
+
+        /* 3. 状态球组件 */
+/* ================= 3. 状态球组件 (Status Icons) ================= */
+        #status-widget-group { 
+            display: flex; 
+            flex-direction: row; 
+            gap: 8px;            
+            margin-left: 5px;    
+            margin-top: 5px;
+        }
+        
+        .status-circle {
+            width: 65px; height: 65px; 
+            position: relative;
+            background: none; border: none;
+        }
+
+        /* 1. 底层 Frame */
+        .status-frame {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: contain;
+            z-index: 0;
+        }
+
+        /* 2. 中间 Mask */
+        .liquid-mask {
+            position: absolute; 
+            top: 0; left: 0; width: 100%; height: 100%;
+            border-radius: 50%; 
+            overflow: hidden; 
+            z-index: 1; 
+            background: transparent; 
+        }
+
+        /* 水位控制器 */
+        .liquid-level {
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%;
+            height: 100%; /* JS 控制这个 */
+            overflow: hidden; /* 关键：切掉上半部分 */
+            transition: height 0.5s ease-out;
+        }
+
+        /* 3. 液体纹理 - [本次修复重点] */
+        .liquid-texture {
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%; 
+            height: 65px; /* [Fixed] 固定高度，永远不缩放 */
+            object-fit: cover;
+        }
+
+/* 4. 顶层 Icon */
+        .status-icon-fg {
+            position: absolute; top: 0; left: 0; 
+            width: 100%; height: 100%;
+            object-fit: contain; 
+            z-index: 2; 
+            
+            /* [放大] 放大到 0.85 */
+            /* 65px * 0.85 ≈ 55px，这样就和上面的爱心一样大了 */
+            transform: scale(0.85); 
+            
+            pointer-events: none;
+        }
+
+        /* 4. 底部按钮 */
+        #hud-bottom-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%; transform: translateX(-50%);
+            display: flex; gap: 40px;
+            z-index: 40;
+        }
+        .hud-btn-container { position: relative; cursor: pointer; transition: transform 0.2s; }
+        .hud-btn-container:hover { transform: translateY(-5px); }
+        .hud-main-btn { width: 70px; height: 70px; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3)); }
+        
+        #diary-red-dot-hud {
+            position: absolute; top: 0; right: 0;
+            width: 15px; height: 15px; background: red; border-radius: 50%; border: 2px solid white;
+            display: none;
+        }
+
+/* 5. 商店面板动画 */
+        #shop-panel-container {
+            position: absolute; 
+            bottom: 0; 
+            left: 50%; 
+            transform: translateX(-50%); /* 默认状态：在屏幕底部显示 */
+            width: 90%; 
+            max-width: 700px;
+            background: rgba(255, 255, 255, 0.98);
+            border-top-left-radius: 16px; 
+            border-top-right-radius: 16px;
+            box-shadow: 0 -5px 30px rgba(0,0,0,0.2);
+            z-index: 60; 
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            padding-bottom: 20px;
+            display: flex; flex-direction: column; /* 确保布局正常 */
+        }
+
+        /* 隐藏状态：向下移动 100% (自身高度) + 20px (阴影余量) */
+        #shop-panel-container.hidden-bottom {
+            transform: translate(-50%, 110%) !important; 
+        }
+
+
+        #shop-close-btn {
+            position: absolute; top: -15px; right: -15px;
+            width: 30px; height: 30px; border-radius: 50%;
+            background: #e74c3c; color: white; border: 2px solid #fff;
+            cursor: pointer; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        #clock-wrapper { background: rgba(255,255,255,0.95); padding: 10px 15px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); pointer-events: auto; display: flex; flex-direction: column; gap: 5px; align-items: center; min-width: 140px; }
+        /* [新增] 重置时间按钮样式 */
+        #btn-auto-time {
+            background: transparent;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #999; /* 默认灰色 */
+            margin-left: 8px;
+            padding: 0;
+            line-height: 1;
+            transition: all 0.3s ease;
+        }
+        #btn-auto-time:hover {
+            color: #333;
+            transform: rotate(180deg); /* 悬停时旋转一下 */
+        }
+        /* 当处于自动模式时，按钮变成绿色，表示当前是实时同步状态 */
+        #btn-auto-time.is-auto {
+            color: #2ecc71; 
+        }
+        
+        #clock-display { font-size: 24px; font-weight: bold; color: #333; display: flex; align-items: center; gap: 8px; }
+        #day-icon { font-size: 24px; }
+        #time-control { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #666; width: 100%; }
+        input[type=range] { flex: 1; cursor: pointer; height: 4px; accent-color: #ffaa00; }
+
+        #heart-panel { background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 20px; font-size: 18px; color: #e74c3c; font-weight: bold; display: flex; gap: 10px; align-items: center; pointer-events: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .debug-btn { background: #555; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+
+        #tutorial { 
+            position: absolute; 
+            top: 150px; 
+            left: 20px; 
+            background: rgba(255,255,255,0.9); 
+            padding: 15px; 
+            border-radius: 12px; 
+            pointer-events: none; 
+            z-index: 5; 
+            display: none; 
+        }
+        #context-menu { position: absolute; display: none; background: white; padding: 8px; border-radius: 8px; z-index: 100; flex-direction: column; gap: 5px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); pointer-events: auto; }
+        .context-btn { padding: 8px 16px; border: 1px solid #eee; background: #f9f9f9; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .btn-delete { color: red; background: #fff0f0; }
+        
+        #confirm-dialog {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 20px; border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 20000;
+            text-align: center; display: none; width: 280px; font-family: 'Microsoft YaHei', sans-serif;
+        }
+        #confirm-dialog h3 { margin-top: 0; color: #333; }
+        #confirm-dialog p { color: #666; margin-bottom: 20px; }
+        .dialog-btns { display: flex; justify-content: space-around; margin-top: 20px; }
+        .dialog-btn { padding: 8px 20px; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; transition: transform 0.1s; }
+        .btn-yes { background: #ffaa00; color: white; }
+        .btn-no { background: #eee; color: #333; }
+        .dialog-btn:active { transform: scale(0.95); }
+
+        .status-valid { color: green; font-weight: bold; }
+        .status-invalid { color: red; font-weight: bold; }
+        .heart-float { position: absolute; color: #e74c3c; font-weight: bold; font-size: 20px; pointer-events: none; animation: floatUp 1.5s ease-out forwards; z-index: 30; }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-50px) scale(1.5); opacity: 0; } }
+        .emote-bubble { position: absolute; font-size: 24px; pointer-events: none; animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 25; }
+        @keyframes popUp { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+        
+        #shop-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 700px; background: rgba(255, 255, 255, 0.98); border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; user-select: none; z-index: 10; }
+        #tabs { display: flex; background: #f0f0f0; border-bottom: 1px solid #ddd; }
+        .tab { flex: 1; text-align: center; padding: 10px 0; cursor: pointer; font-size: 14px; color: #666; }
+        .tab.active { background: #fff; color: #333; font-weight: bold; border-bottom: 3px solid #ffaa00; }
+        #items-scroll { display: flex; gap: 12px; padding: 15px; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+        .item-btn { flex: 0 0 auto; width: 80px; height: 85px; border: 2px solid #eee; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; background: #fff; color: #333; position: relative; transition: all 0.2s; }
+        .item-btn.selected { border: 3px solid #ffaa00; background: #fff8e1; transform: translateY(-3px); }
+        .item-btn.disabled { filter: grayscale(100%); opacity: 0.6; cursor: not-allowed; }
+        .color-preview { width: 24px; height: 24px; border-radius: 50%; margin-bottom: 5px; border: 1px solid rgba(0,0,0,0.1); background-size: cover; }
+        .price-tag { margin-top: 4px; font-size: 11px; color: #e74c3c; font-weight: bold; background: #fff0f0; padding: 2px 6px; border-radius: 8px; }
+
+        .bubble { position: absolute; top: -100px; left: -100px; background: white; padding: 8px 15px; border-radius: 20px; border: 2px solid #333; font-size: 20px; pointer-events: none; transform: translate(-50%, -100%); z-index: 1000; opacity: 1; transition: opacity 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .bubble.hidden { opacity: 0; visibility: hidden; }
+        .bubble::after { content: ''; position: absolute; bottom: -6px; left: 50%; margin-left: -6px; border-width: 6px 6px 0; border-style: solid; border-color: #333 transparent transparent transparent; }
+        
+        /* [UI修改] 常驻显示面板，位置调整到左下角 */
+        .panel { 
+            position: absolute; 
+            bottom: 20px; 
+            left: 20px; /* 放在左侧 */
+            background: rgba(255, 255, 255, 0.95); 
+            padding: 15px; 
+            border-radius: 12px; 
+            width: 160px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
+            font-family: 'Arial', sans-serif; 
+            z-index: 900; 
+            display: block; /* 常驻显示 */
+        }
+        .panel.hidden { display: none !important; }
+        .panel h3 { margin: 0 0 10px 0; font-size: 16px; color: #333; text-align: center; }
+        .stat-row { display: flex; align-items: center; margin-bottom: 8px; font-size: 14px; }
+        .stat-row span { width: 40px; font-weight: bold; color: #555; }
+        .progress-bar { flex-grow: 1; background: #e0e0e0; height: 10px; border-radius: 5px; overflow: hidden; margin-left: 5px; border: 1px solid #ccc; }
+        #bar-hunger { background: #ff9f43; height: 100%; transition: width 0.3s; }
+        #bar-toilet { background: #54a0ff; height: 100%; transition: width 0.3s; }
+
+        /* [新增] 日记入口按钮 */
+        #diary-btn-wrapper {
+            position: absolute;
+            bottom: 20px;
+            left: 200px; /* 放在状态面板(宽160px)右边 */
+            z-index: 20;
+        }
+        #diary-toggle-btn {
+            font-size: 30px;
+            background: rgba(255,255,255,0.9);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        #diary-toggle-btn:hover { transform: scale(1.1); }
+        #diary-red-dot {
+            position: absolute;
+            top: 0; right: 0;
+            width: 12px; height: 12px;
+            background: #e74c3c;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            display: none; /* 默认隐藏 */
+        }
+
+        /* [新增] 日记本弹窗 */
+        #diary-modal {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+        #diary-modal.hidden { display: none; }
+
+        #diary-paper {
+
+            /* [修改] 调整尺寸为 B5 风格 (比例约 1:1.4) */
+            width: 500px;        /* 宽度变宽 */
+            height: 700px;       /* 高度固定，不再随内容变化 */
+
+            /* 防止屏幕太小时溢出 */
+            max-width: 90%;
+            max-height: 90%; 
+
+            background: #fffdf2; /* 米黄纸色 */
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            position: relative;
+            font-family: 'Courier New', 'Microsoft YaHei', sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+        #diary-close-btn {
+            position: absolute; top: 10px; right: 10px;
+            background: none; border: none; font-size: 24px; cursor: pointer; color: #888;
+        }
+        #diary-title { margin: 0 0 5px 0; color: #5d4037; font-size: 20px; text-align: center; }
+        #diary-meta { font-size: 12px; color: #888; text-align: center; margin-bottom: 5px; }
+        
+        #diary-entries {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 5px;
+            /* 滚动条美化 */
+            scrollbar-width: thin;
+            scrollbar-color: #dbc2a3 transparent;
+        }
+        #diary-entries::-webkit-scrollbar { width: 4px; }
+        #diary-entries::-webkit-scrollbar-thumb { background: #dbc2a3; border-radius: 2px; }
+
+        .entry { margin-bottom: 15px; border-left: 3px solid #ffaa00; padding-left: 10px; animation: fadeIn 0.3s; }
+        .entry-time { font-size: 12px; color: #999; font-weight: bold; margin-bottom: 2px; }
+        .entry-text { font-size: 14px; color: #333; line-height: 1.5; }
+        .empty-tip { color: #ccc; text-align: center; border: none; font-style: italic; margin-top: 20px; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+
+        /* [新增] 右上角 Debug 工具栏样式 */
+#debug-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    gap: 5px;
+    z-index: 100;
+}
+.debug-btn {
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.debug-btn:hover { background: rgba(0, 0, 0, 0.8); }
+
+
+    </style>
+    <script>
+        function logToScreen(msg, type = 'info') 
+        { 
+            const consoleDiv = document.getElementById('debug-console'); 
+            if (consoleDiv) { 
+                //consoleDiv.style.display = 'block'; 
+                const line = document.createElement('div'); 
+                line.textContent = `> ${msg}`; 
+                if (type === 'error') line.className = 'log-error'; 
+                else if (type === 'warn') line.className = 'log-warn'; consoleDiv.appendChild(line); consoleDiv.scrollTop = consoleDiv.scrollHeight; } console.log(msg); }
+        window.onerror = function(msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); document.getElementById('force-start-btn').style.display = 'block'; return false; };
+    </script>
+</head>
+<body>
+
+    <div id="debug-console">V91 系统日志...</div>
+
+    <div id="loading-screen">
+        <div id="loading-text">资源加载中...</div>
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <button id="force-start-btn" onclick="window.forceStart()">⚠️ 强制进入游戏</button>
+    </div>
+
+    <div id="confirm-dialog">
+        <h3 id="dialog-title">补充猫粮?</h3>
+        <p id="dialog-msg">需要消耗 10 爱心</p>
+        <div class="dialog-btns">
+		<button class="dialog-btn btn-no" onclick="closeDialog()">取消</button>
+		<button class="dialog-btn btn-yes" id="btn-confirm-yes">确定</button>
+		</div>
+    </div>
+
+
+
+    <div id="tutorial">
+        <strong>V91 细节精修版</strong><br>
+        1. 修复猫咪睡觉"踢腿"/来回走<br>
+        2. 吃饭对准/站猫砂盆上<br>
+        3. 状态栏常驻左下角<br>
+        <div style="margin-top:5px; border-top:1px solid #ccc; padding-top:5px;"><span id="status-text">初始化...</span></div>
+    </div>
+
+    <!-- ================== 新版 HUD ================== -->
+    
+    <!-- 1. 左上角：时间与状态 -->
+    <div id="hud-top-left">
+        <!-- 时间组件 -->
+        <div id="time-widget">
+            <div id="time-bg">
+                <!-- 显示时间 -->
+                <span id="time-text-display">12:00</span>
+                <span id="time-ampm">PM</span>
+            </div>
+            <!-- 天气/光影控制入口 -->
+            <div id="weather-icon-container" onclick="toggleTimePopover()">
+                <img id="weather-icon-img" src="./assets/ui/icon_sun.png">
+            </div>
+            <!-- 隐藏的滑块控制条 (Popover) -->
+            <div id="time-popover" class="hidden">
+                <input type="range" id="time-slider-hud" min="0" max="23.99" step="0.01">
+                <button id="time-reset-btn" title="重置时间">↻</button>
+            </div>
+        </div>
+
+        <!-- 爱心组件 -->
+        <div id="heart-widget">
+            <!-- 图标放在背景外面，方便绝对定位 -->
+            <img src="./assets/ui/icon_heart.png" id="heart-icon-img">
+            <div id="heart-bg">
+                <span id="heart-text-display">500</span>
+            </div>
+        </div>
+
+<!-- 生理状态组件 -->
+        <div id="status-widget-group">
+            <!-- 饱食度 -->
+            <div class="status-circle">
+                <!-- 1. 底层 Frame -->
+                <img src="./assets/ui/hunger_icon_frame.png" class="status-frame">
+                
+                <!-- 2. 中间 Mask (负责切圆角) -->
+                <div class="liquid-mask">
+                    <!-- [新增] 水位容器 (负责控制高度) -->
+                    <div class="liquid-level" id="level-hunger">
+                        <!-- 液体纹理 (高度固定，沉底) -->
+                        <img src="./assets/ui/hunger_icon_fill.png" class="liquid-texture">
+                    </div>
+                </div>
+                
+                <!-- 3. 顶层 Icon -->
+                <img src="./assets/ui/hunger_icon.png" class="status-icon-fg">
+            </div>
+
+            <!-- 便便值 -->
+            <div class="status-circle">
+                <img src="./assets/ui/toilet_icon_frame.png" class="status-frame">
+                <div class="liquid-mask">
+                    <div class="liquid-level" id="level-toilet">
+                        <img src="./assets/ui/toilet_icon_fill.png" class="liquid-texture">
+                    </div>
+                </div>
+                <img src="./assets/ui/toilet_icon.png" class="status-icon-fg">
+            </div>
+        </div>
+
+    </div>
+
+    <!-- [新增] 右上角 Debug 工具栏 HTML -->
+<div id="debug-panel">
+    <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
+    <button class="debug-btn" onclick="debugResetCat()">重置猫</button>
+    <button class="debug-btn" onclick="toggleDebugGizmos()">线框</button>
+    <button class="debug-btn" onclick="toggleConsole()">📜 日志</button>
+    <button class="debug-btn" onclick="window.debugGenDiary()">📝 生成</button>
+    <button class="debug-btn" onclick="window.debugClearDiary()">🗑️ 清空</button>
+</div>
+
+    <!-- 2. 底部：功能入口 -->
+    <div id="hud-bottom-bar">
+        <div class="hud-btn-container" onclick="toggleDiary()">
+            <img src="./assets/ui/btn_diary.png" class="hud-main-btn">
+            <div id="diary-red-dot-hud"></div>
+        </div>
+        <div class="hud-btn-container" onclick="toggleShop()">
+            <img src="./assets/ui/btn_shop.png" class="hud-main-btn">
+        </div>
+    </div>
+
+    <!-- 3. 商店面板 (修改原有结构，增加关闭按钮) -->
+    <!-- 请找到原有的 #shop-panel，修改它的 ID 为 shop-panel-container，并增加头部 -->
+    <div id="shop-panel-container" class="hidden-bottom">
+        <button id="shop-close-btn" onclick="toggleShop()">×</button>
+        <!-- 下面保留原有的 tabs 和 items-scroll -->
+        <div id="tabs"><div class="tab active" onclick="switchCategory('floor')">家具</div><div class="tab" onclick="switchCategory('small')">小物</div><div class="tab" onclick="switchCategory('wall')">墙壁</div><div class="tab" onclick="switchCategory('decor')">装修</div></div>
+        <div id="items-scroll"></div>
+    </div>
+
+
+
+
+    <div id="context-menu"><div class="context-btn" id="btn-move">移动位置</div><div class="context-btn btn-delete" id="btn-delete">删除家具</div><div class="context-btn" id="btn-cancel">取消选中</div></div>
+    <div id="cat-bubble" class="bubble hidden"><span id="bubble-icon">🐟</span></div>
+    
+    <!-- 常驻状态面板 -->
+
+
+
+    <!-- [新增] 日记本弹窗 (模态框) -->
+    <div id="diary-modal" class="hidden">
+        <div id="diary-paper">
+            <button id="diary-close-btn" onclick="toggleDiary()">×</button>
+            <h2 id="diary-title">猫咪日记</h2>
+            
+            <!-- [新增] 翻页控制区 -->
+            <div id="diary-nav" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <button onclick="diaryManager.changePage(-1)" style="cursor:pointer; border:none; background:none; font-size:18px;">◀</button>
+                <span id="diary-date-title" style="font-weight:bold; color:#555;">2023-12-17</span>
+                <button onclick="diaryManager.changePage(1)" style="cursor:pointer; border:none; background:none; font-size:18px;">▶</button>
+            </div>
+
+            <div id="diary-meta">
+                <span id="diary-weather">🌤️ 心情随笔</span>
+            </div>
+            <hr style="border: 0; border-top: 1px dashed #ccc; margin: 10px 0;">
+            
+            <div id="diary-entries">
+                <!-- 内容 -->
+            </div>
+        </div>
+    </div>
+
+
+    <script type="importmap">
+        { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+        import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+        // === [新增] 后期处理模块 (直接复制这一段放在这里) ===
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+        setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
+
+        // === 1. 全局配置与变量 ===
+        const CAT_CONFIG = { 
+            scale: 0.35, rotateX: 0, rotateY: 0, yOffset: 0, 
+            anim: {
+                sleep: 0,   // Action 1: 倒下/侧躺
+                happy: 1,   // Action 2: 乞讨/高兴
+                idle: 2,    // Action 3: 寻找 (作为待机)
+                eat: 3,     // Action 4: 吃饭
+                urgent: 5,  // Action 6: 着急 (上厕所)
+                hop: 6,     // Action 7: 跳着走
+                walk: 7     // Action 8: 走路
+            }
+        };
+        const SKY_COLORS = { night: new THREE.Color(0x1a1a2e), dawn: new THREE.Color(0xffaa99), day: new THREE.Color(0xe0f7fa), dusk: new THREE.Color(0x6a5acd) };
+        const DEFAULT_DECOR = { floor: { color: 0xF5F5DC, texture: null }, wall:  { color: 0xEBE5D1, texture: null } };
+        
+        let scene, camera, renderer, controls;
+        let raycaster, pointer, floorPlane, wallGroup;
+        let sunLight, hemiLight;
+        let sunMesh, moonMesh, celestialGroup;
+        const gameClock = new THREE.Clock(); 
+        
+        // === [修改] 时间系统变量重构 ===
+        // 移除原来的 gameTime 和 timeSpeed
+        // let gameTime = 8.0; let timeSpeed = 0.2; 
+        
+        let visualHour = 8.0;     // 视觉时间 (0-24)，用于渲染天空/光照
+        let isTimeAuto = true;    // 是否自动跟随现实时间
+        let lastRealTime = Date.now(); // 上一帧的真实时间
+
+        const moveKeys = { w: false, a: false, s: false, d: false };
+        const loadedModels = {}; 
+        const textureLoader = new THREE.TextureLoader();
+        const gltfLoader = new GLTFLoader();
+        const objLoader = new OBJLoader();
+        
+        let mode = 'idle', ghostMesh = null, currentItemData = null, currentRotation = 0, canPlace = false;
+        let selectedObject = null, selectionBox = null, editingObjectOriginalPos = null, editingObjectOriginalQuat = null;
+        let longPressTimer = null, startPointer = new THREE.Vector2();
+        
+        const obstacles = []; const placedFurniture = []; const cats = []; 
+        let heartScore = 500; let currentCategory = 'floor'; let activeDecorId = { floor: null, wall: null }; let skyPanels = []; 
+        let pendingInteraction = null;
+        let draggingCat = null; 
+
+        // === [新增] 日记文案配置 ===
+const DIARY_CONFIG = {
+
+                // [新增] 日记头部信息配置
+            diary_meta: {
+                weathers: [
+                    "☀️ 阳光正好，适合烤毛",
+                    "☁️ 阴天，适合冬眠",
+                    "🌧️ 下雨了，睡个回笼觉",
+                    "🌬️ 有风，适合窗边巡逻",
+                    "✨ 星光璀璨，夜里很安静",
+                    "🌙 月色朦胧，适合打盹",
+                    "🔥 壁炉很暖，不想动弹"
+                ],
+                moods: [
+                    "😐 心情一般，懒得理人",
+                    "😊 勉强满意，赏个眼神",
+                    "😠 充满杀气，生人勿近",
+                    "😴 困成一滩泥，勿扰",
+                    "😻 心情愉悦，可以贴贴",
+                    "😡 有点暴躁，正在思考人生",
+                    "🐟 饿得两眼发光，只想着饭"
+                ],
+                keywords: [
+                    "#那个红色的光点", "#快递箱", "#难吃的药片", "#逗猫棒", 
+                    "#窗外麻雀", "#沙发跑酷", "#午后小憩", "#人类奴才"
+                ]
+            },
+
+            // [新增] 离线事件文案
+            offline_events: [
+                {
+                    weight: 20, // 普通离线事件权重
+                    type: 'normal',
+                    text: [
+                        "两脚兽消失的第{hours}个小时，窗外那只麻雀又挑衅了我三次，但那是我留给晚上的战术储备。",
+                        "独自在家，我巡视了领地五次。嗯，一切安好，除了那个莫名其妙的笔又掉地上了。",
+                        "睡了一个漫长的午觉，醒来时发现太阳换了个地方，两脚兽还没回来。",
+                        "我假装在睡觉，偷偷观察了周围的一切。这个房间藏着很多秘密。"
+                    ]
+                },
+                {
+                    weight: 50, // 破坏事件权重较高
+                    type: 'damage_chance', // 特殊类型，后续可触发破坏动画
+                    text: [
+                        "那个玻璃杯站在桌边瑟瑟发抖，为了帮它解脱，我推了它一把。听到了清脆的响声，重力学定律再次得到了验证。",
+                        "我试图给沙发做个新的造型，于是多挠了几下。两脚兽应该会喜欢我的新设计。",
+                        "花瓶里的花太碍事了，我决定帮它们换个更舒服的位置——地板。"
+                    ]
+                },
+                {
+                    weight: 10, // 极低概率的神秘事件
+                    type: 'mystery',
+                    text: [
+                        "墙角那个隐形的家伙今天又来了，我和它聊了一会儿关于量子力学的看法。",
+                        "对着空气叫了几声，似乎听到了回应。这个房子里住着别的……东西？",
+                        "我发现了一个新的光斑，它在墙上跳舞。我捕猎了它半小时。"
+                    ]
+                }
+            ],
+
+            // [新增] 特定物品的专用吐槽 (key 对应 furniture ID)
+            specific_items: {
+                // [新增] 猫食盆专用文案
+                'food_bowl': [
+                    "领地里多了一个饭盆。但我检查过了，里面是空的！这是在挑衅我吗？",
+                    "新的饭盆？造型勉勉强强，希望能装得下更多的高级罐头。",
+                    "两脚兽摆放了一个新的祭坛（饭盆）。我会在旁边守着，直到祭品出现。"
+                ],
+
+                // [新增] 猫砂盆专用文案
+                'litter_box': [
+                    "又一个厕所。两脚兽对收集我的粑粑真的很执着，我是不是该配合一下？",
+                    "新的沙盆，踩上去脚感不错。今晚就给它开光，确立我的领土权。",
+                    "这是我的新冥想室。请两脚兽在清理之前保持距离。",
+                    "新的厕所？虽然造型一般，但脚感还算凑合。希望他能保持清理频率。",
+                    "这是我的新办公室。请不要在我办公（拉屎）的时候盯着我看。"
+                ],
+                'ChrismasTree': [
+                    "两脚兽带回了一棵发光的树（圣诞树）。上面的球球看起来很好吃，我决定今晚爬上去摘一颗。",
+                    "那个绿色的尖刺怪物（圣诞树）占领了客厅。我试图在它脚下尿尿以示主权，但被阻止了。"
+                ],
+                'Television': [
+                    "那个黑色的板子（电视）里有人在动。我盯着看了半小时，那是另一个维度的入口吗？",
+                    "两脚兽对着那个发光的板子傻笑。为了唤醒他，我挡在了屏幕正中间。"
+                ],
+                'fireplace': [
+                    "墙壁上多了一个温暖的洞（壁炉）。这是家里唯一值得称赞的设施，适合烤我的肉垫。",
+                    "火光在跳舞。我盯着看了很久，觉得那个火苗比逗猫棒聪明多了。"
+                ],
+                'cat_tree': [
+                    "终于有个能俯视两脚兽的高台了。朕甚慰。",
+                    "这个高塔（爬架）是家里唯一符合我身份的宝座。虽然爬上去有点累。"
+                ],
+                'window': [
+                    "墙上开了个洞（窗户），今天上演的是《麻雀的诱惑》，剧情很精彩。",
+                    "那个洞（窗户）漏风，但也漏进来阳光。我勉为其难地在那里睡了一下午。"
+                ]
+            },
+            
+            // 通用家具 (买地面大件时触发)
+            buy_floor: [
+                "领地里出现了一个叫【{item}】的庞然大物。好在包装它的纸箱子很棒，五星好评。",
+                "愚蠢的两脚兽带回了【{item}】，占用了我宝贵的跑酷路线。不过箱子我征用了。",
+                "新王座【{item}】勉强能坐，但那个快递箱才是本世纪最伟大的发明！",
+                "家里越来越挤了，都是因为【{item}】。如果我绊倒了，都要怪两脚兽。"
+            ],
+            // 通用小物 (买桌上/墙上东西触发)
+            buy_small: [
+                "桌子上多了个【{item}】，目测推下去的声音会很清脆。",
+                "新贡品【{item}】？摆放的位置毫无美感，但我懒得纠正他。",
+                "墙上挂了个奇怪的东西【{item}】，我想跳起来把它挠下来，以此测试我的弹跳力。"
+            ],
+            // 喂食
+            feed: [
+                "虽然我不饿，但为了不让他跪在地上哭，我勉强吃了一口贡品。",
+                "今天的罐头开得晚了3秒，这笔账我记在小本本上了。",
+                "两脚兽呈上了御膳。看在他诚惶诚恐的份上，赏脸吃一半吧。",
+                "吃饭是猫生大事。但他站在旁边看我吃是什么意思？变态吗？"
+            ],
+            // 铲屎
+            clean: [
+                "他又在偷我的便便了。人类这种收藏癖真是令人费解。",
+                "厕所终于清理了。作为奖励，我今晚会多拉一点让他开心。",
+                "每当他像寻宝一样挖掘沙盆时，我都觉得这个物种没救了。"
+            ],
+            // 抚摸 (心情好)
+            pet_happy: [
+                "技师手法尚可，允许他多摸两分钟。",
+                "今天心情不错，让他摸两下也没关系，就当施舍了。",
+                "竟然知道我要挠下巴？这个奴才终于开窍了。",
+                "咕噜咕噜……这不是因为我喜欢，只是喉咙有点痒。"
+            ],
+            // 抚摸 (心情差)
+            pet_angry: [
+                "竟然敢在我不爽的时候摸我？给了一爪子。",
+                "别碰我！今天的毛发造型不能乱！",
+                "无论是谁，竟敢在这个时间打扰本王，判处死刑！"
+            ]
+        };       
+        
+        // === 2. 数据库 ===
+        const FURNITURE_DB = [
+            { 
+                id: 'food_bowl', name: '猫食盆', price: 50, type: 'functional', subType: 'food', color: 0xffffff,
+                modelFile: 'FoodBowl_Empty.glb',      
+                fullModelFile: 'FoodBowl_Full.glb',   
+                modelScale: 0.3, fixBottom: true, size: {x:0.5, y:0.3, z:0.5}
+            },
+            { 
+                id: 'litter_box', name: '猫砂盆', price: 80, type: 'functional', subType: 'toilet', color: 0x888888,
+                modelFile: 'LitterBox_Dirty.glb',    
+                fullModelFile: 'LitterBox_Clean.glb',
+                modelScale: 0.5, fixBottom: true, size: {x:1.0, y:0.4, z:1.0}
+            },
+            { id: 'rug',      type: 'floor', layer: 0, name: '圆地毯', price: 20,  color: 0x3498db, size: {x:2, y:0.02, z:2}, modelFile: 'RoundRug.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
+            { id: 'rug_squre',type: 'floor', layer: 0, name: '方地毯', price: 20,  color: 0x3498db, size: {x:2, y:0.02, z:2}, modelFile: 'rug_squre.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
+            { id: 'bed',      type: 'floor', layer: 1, name: '猫窝',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'bed.glb', modelScale: 0.8, canSleep: true, fixBottom: true },
+            { id: 'sofa',     type: 'floor', layer: 1, name: '大沙发', price: 150, color: 0xe74c3c, size: {x:3, y:1, z:1},   modelFile: 'sofa.glb', modelScale: 2.0, canSleep: true, fixBottom: true },
+            { id: 'ArmChair',     type: 'floor', layer: 1, name: '扶手椅', price: 150, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'ArmChair.glb', modelScale: 1.0, canSleep: true, fixBottom: true },
+            { id: 'DirecyorChair',     type: 'floor', layer: 1, name: '导演椅', price: 150, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'DirecyorChair.glb', modelScale: 1.0, canSleep: true, fixBottom: true },
+
+
+            { id: 'cat_tree', type: 'floor', layer: 1, name: '猫爬架', price: 100, color: 0x8e44ad, size: {x:1, y:1.8, z:1},   modelFile: 'cat_tree.glb', modelScale: 1.0 , fixBottom: true},
+            // [修复] 书架：添加 isSurface 和高度 (高度设为2，即放在顶端)
+            { id: 'book_shelf', type: 'floor', layer: 1, name: '书架', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'book_shelf.glb', modelScale: 1.0, fixBottom: true, isSurface: true, surfaceHeight: 2.0 },            { id: 'ColorBoxShelf', type: 'floor', layer: 1, name: '盒子架子', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'ColorBoxShelf.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'CafeTree', type: 'floor', layer: 1, name: '大盆栽', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'CafeTree.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'PottedGreenPlant', type: 'floor', layer: 1, name: '大盆栽', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'PottedGreenPlant.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'GreenPlant', type: 'floor', layer: 1, name: '盆栽', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'GreenPlant.glb', modelScale: 1.0, fixBottom: true },
+         
+            { id: 'Television', type: 'floor', layer: 1, name: '电视', price: 100, color: 0x8e44ad, size: {x:1.9, y:1.5, z:0.8},   modelFile: 'Television.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'table',    type: 'floor', layer: 1, isSurface: true, surfaceHeight: 0.8, name: '木桌', price: 60,  color: 0x8d6e63, size: {x:1.5, y:0.6, z:1.5}, modelFile: 'table.glb', modelScale: 1.0, fixBottom: true },
+{ 
+                id: 'ChrismasTree',    
+                type: 'floor', 
+                layer: 1, 
+                name: '圣诞树', 
+                price: 100,  
+                color: 0x8d6e63, 
+                size: {x:1.5, y:2, z:1.5}, 
+                modelFile: 'ChrismasTree2.glb', 
+                modelScale: 1.5, 
+                fixBottom: true,
+                
+                // [新增] 光照属性
+                light: true, 
+                lightType: 'point', 
+                // 光源位置：x=0, y=1.8(树顶), z=0
+                lightOffset: { x: 0, y: 1.8, z: 0 } 
+            },            { id: 'fireplace',    type: 'floor', layer: 1, name: '壁炉', price: 100,  color: 0x8d6e63, size: {x:1.5, y:1.5, z:1}, modelFile: 'fireplace.glb', modelScale: 1.8, fixBottom: true },
+            { id: 'frigerator',    type: 'floor', layer: 1, name: '冰箱', price: 100,  color: 0x8d6e63, size: {x:1.5, y:1.5, z:1}, modelFile: 'frigerator.glb', modelScale: 1.0, fixBottom: true },
+
+            { id: 'mug',      type: 'small', layer: 2, name: '马克杯', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'mug.glb', modelScale: 0.2, fixBottom: true },
+            { id: 'DalMug',      type: 'small', layer: 2, name: '马克杯蓝', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'DalMug.glb', modelScale: 0.8, fixBottom: true },
+            { id: 'CoffeeCup',      type: 'small', layer: 2, name: '咖啡杯', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'CoffeeCup.glb', modelScale: 0.8, fixBottom: true },
+            { 
+                id: 'ChrismasTree_Small',      
+                type: 'small', 
+                layer: 2, 
+                name: '小圣诞树', 
+                price: 5,   
+                color: 0xffffff, 
+                size: {x:0.3, y:0.3, z:0.3}, 
+                modelFile: 'ChrismasTree_Small.glb', 
+                modelScale: 1.0, 
+                fixBottom: true,
+                
+                // [新增] 加上点光源，让它照亮桌面
+                light: true, 
+                lightType: 'point', 
+                // 偏移量根据 size 微调，y=0.25 大概在树中间
+                lightOffset: { x: 0, y: 0.25, z: 0 } 
+            },
+          
+            { id: 'lamp',     type: 'small', layer: 2, name: '台灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'lamp.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'tiffany_lamp',     type: 'small', layer: 2, name: '台灯2',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'tiffany_lamp.glb', modelScale: 0.4, fixBottom: true },
+
+            { id: 'floor_lamp',     type: 'small', layer: 2, name: '落地灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'floor_lamp.glb', modelScale: 0.3, fixBottom: true, lightOffset: { x: 0, y: 1.8, z: 0 }  },
+            { id: 'cutelamp',     type: 'small', layer: 2, name: '落地灯2',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'cutelamp.glb', modelScale: 1.0, fixBottom: true, lightOffset: { x: 0, y: 1.8, z: 0 }  },
+           
+            { id: 'books',     type: 'small', layer: 2, name: '书',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4},  modelFile: 'books.glb', modelScale: 5.0, fixBottom: true },
+            { id: 'wall_plant',    type: 'wall',  layer: 1, name: '壁挂藤', price: 20,  color: 0x2ecc71, size: {x:2, y:0.5, z:0.5}, modelFile: 'wall_plant.glb', modelScale: 0.8 },
+            { id: 'painting', type: 'wall',  layer: 1, name: '风景画', price: 50,  color: 0xFFD700, size: {x:1, y:1, z:0.1}, modelFile: 'painting.glb', modelScale: 1.0 },
+            { id: 'curtain', type: 'wall', layer: 1, name: '窗帘', price: 80, color: 0xFFFFFF, size: {x:2.0, y:2.0, z:0.5}, modelFile: 'curtain.glb', modelScale: 1.5, autoCenter: true, allowOverlap: true },
+            { id: 'wall_star', type: 'wall', layer: 1, name: '星星挂饰', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'WallDecorate_Star.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },
+            { id: 'ChrismaxSock', type: 'wall', layer: 1, name: '圣诞袜', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'ChrismaxSock.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },
+            { id: 'CorkBorad', type: 'wall', layer: 1, name: '墙壁装饰', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'CorkBorad.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },
+          
+            { id: 'window',   type: 'wall',  layer: 1, name: '大窗', price: 120, color: 0x87CEEB, size: {x:1.8, y:1.8, z:0.2}, light: true, lightType: 'spot', modelFile: 'window_large.glb', autoCenter: true, modelScale: 1, manualOffset: { x: 0, y: 0, z: 0 } },
+            { id: 'window2', type: 'wall',  layer: 1, name: '窗2', price: 120, color: 0x87CEEB, size: {x:1.8, y:2, z:0.2}, light: true, lightType: 'spot', modelFile: 'Window2.glb', modelScale: 1, autoCenter: true },
+            { id: 'floor_wood', type: 'decor', name: '木纹地板', price: 50, color: 0x8d6e63, decorType: 'floor', textureFile: 'WoodenFloor.jpg' }, 
+            { id: 'floor_tile', type: 'decor', name: '白瓷砖',   price: 50, color: 0xdbc2a3, decorType: 'floor' },
+            { id: 'wall_pink',  type: 'decor', name: '温馨粉墙', price: 50, color: 0xc9a2a6, decorType: 'wall' },
+            { id: 'wall_blue',  type: 'decor', name: '清爽蓝墙', price: 50, color: 0xb3e5fc, decorType: 'wall' },
+            { id: 'wall_blueWooden',  type: 'decor', name: '蓝色木墙', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'BlueWooden.jpg' },
+            { id: 'MintWallpaper',  type: 'decor', name: '薄荷墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'MintWallpaper.jpg' },
+            { id: 'floor_default', type: 'decor', name: '经典米色', price: 0, color: 0xF5F5DC, decorType: 'floor' },
+            { id: 'wall_default',  type: 'decor', name: '经典暖灰', price: 0, color: 0xEBE5D1, decorType: 'wall' },
+        ];
+
+        // === 3. 辅助函数 ===
+        function setDomText(id, text) { const el = document.getElementById(id); if (el) el.innerText = text; else console.warn(`Element #${id} not found`); }
+        window.closeDialog = function() { document.getElementById('confirm-dialog').style.display = 'none'; pendingInteraction = null; }
+        
+        function showConfirmDialog(title, msg, onYes) {
+            setDomText('dialog-title', title); setDomText('dialog-msg', msg);
+            document.getElementById('confirm-dialog').style.display = 'block';
+            const yesBtn = document.getElementById('btn-confirm-yes'); const newBtn = yesBtn.cloneNode(true); yesBtn.parentNode.replaceChild(newBtn, yesBtn);
+            newBtn.onclick = () => { onYes(); window.closeDialog(); };
+        }
+
+        // [修改] 状态更新函数：不再显示在屏幕左侧，而是发送到系统日志
+        function updateStatusText(text, type) {
+            // 1. 定义日志类型颜色
+            let logType = 'info';
+            if (type === 'invalid') logType = 'error'; // 红字
+            else if (type === 'valid') logType = 'warn'; // 黄字/绿字
+
+            // 2. 调用全局的日志函数 (定义在 head 里的那个)
+            // 这样 "资源加载完毕" 和 "调试模式: 开启" 都会进入日志面板
+            if (typeof window.logToScreen === 'function') {
+                logToScreen(text, logType);
+            } else {
+                console.log(text);
+            }
+        }
+
+        function updateMoney(amt) { 
+            heartScore += amt; 
+            setDomText('heart-text-display', heartScore); // 修改ID
+            refreshShopState();
+            gameSaveManager.saveGame(); 
+        }
+
+        function refreshShopState() { document.querySelectorAll('.item-btn').forEach(b=>{ const p = parseInt(b.dataset.price); if(heartScore >= p) b.classList.remove('disabled'); else b.classList.add('disabled'); }); }
+        function spawnHeart(pos) { const v=pos.clone(); v.y+=1; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='heart-float'; e.innerText='❤ +5'; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); updateMoney(5); setTimeout(()=>e.remove(),1500); }
+        function showEmote(pos,t) { const v=pos.clone(); v.y+=1.2; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='emote-bubble'; e.innerText=t; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); setTimeout(()=>e.remove(),1000); }
+
+        // [升级版] 材质优化函数：赋予模型"动森"般的磨砂质感
+        function sanitizeMaterial(child) {
+            if (child.isMesh) {
+                child.castShadow = true; 
+                child.receiveShadow = true;
+
+                if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
+                
+                // 特殊处理玻璃/窗户
+                const isGlass = child.name.toLowerCase().includes('glass') || child.name.toLowerCase().includes('window');
+                
+                child.material.metalness = 0.0; // 几乎无金属感（像粘土/塑料）
+                child.material.roughness = 0.7; // 高粗糙度，减少锐利反光，增加柔和感
+
+                if (isGlass) { 
+                    child.material.transparent = true; 
+                    child.material.opacity = 0.3; 
+                    child.material.color.setHex(0x88ccff); 
+                    child.material.roughness = 0.1; // 玻璃光滑
+                    child.material.metalness = 0.8; 
+                } else { 
+                    child.material.transparent = false; 
+                    child.material.opacity = 1.0; 
+                }
+                child.material.needsUpdate = true;
+            }
+        }
+
+        function loadAssets(callback) {
+            const files = [];
+            files.push({ key: 'cat', path: './assets/models/cat.glb' });
+            files.push({ key: 'box', path: './assets/models/cardboardBoxOpen.glb' });
+            FURNITURE_DB.forEach(i => { 
+                if(i.modelFile) files.push({ key: i.id, path: './assets/models/'+i.modelFile }); 
+                if(i.fullModelFile) files.push({ key: i.fullModelFile, path: './assets/models/'+i.fullModelFile });
+            });
+
+            if(files.length===0) { callback(); return; }
+            let count = 0;
+            const progressFill = document.getElementById('progress-fill');
+            const loadingScreen = document.getElementById('loading-screen');
+            logToScreen(`Start loading ${files.length} assets...`);
+            
+            files.forEach(f => {
+                const isObj = f.path.toLowerCase().endsWith('.obj');
+                const l = isObj ? objLoader : gltfLoader;
+                l.load(f.path, (data) => {
+                    const sceneData = isObj ? data : data.scene;
+                    const anims = isObj ? [] : data.animations;
+                    sceneData.traverse(sanitizeMaterial);
+                    loadedModels[f.key] = { scene: sceneData, animations: anims };
+                    count++; check();
+                }, undefined, (err)=>{ 
+                    console.warn("Missing asset:", f.path); 
+                    logToScreen(`Failed to load: ${f.path}`, 'warn'); 
+                    count++; check(); 
+                });
+            });
+            function check() {
+                if(progressFill) progressFill.style.width = Math.floor((count/files.length)*100)+'%';
+                if(count===files.length) { 
+                    logToScreen("Assets loading finished.");
+                    setTimeout(()=>{ if(loadingScreen) loadingScreen.remove(); callback(); }, 500); 
+                }
+            }
+        }
+
+        // [修复] 补回 Decor 函数
+        function applyDecorVisuals(item) {
+            const setMaterial = (mesh, config) => {
+                if (config.textureFile) {
+                    textureLoader.load('./assets/textures/' + config.textureFile, (tex) => {
+                        tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+                        if (config.decorType === 'floor') tex.repeat.set(4, 4); else tex.repeat.set(2, 1);
+                        mesh.material.map = tex; mesh.material.color.setHex(0xffffff); mesh.material.needsUpdate = true;
+                    }, undefined, (err) => {console.error("Failed to load texture:", config.textureFile, err);});
+                } else { mesh.material.map = null; mesh.material.color.setHex(config.color); mesh.material.needsUpdate = true; }
+            };
+            if (item.decorType === 'floor') setMaterial(floorPlane, item);
+            else if (item.decorType === 'wall') wallGroup.forEach(wall => setMaterial(wall, item));
+        }
+        function restoreDecorState(type) { const currentId = activeDecorId[type]; if (currentId) { const item = FURNITURE_DB.find(i => i.id === currentId); if (item) applyDecorVisuals(item); } else { const def = DEFAULT_DECOR[type]; applyDecorVisuals({ decorType: type, color: def.color, textureFile: def.texture }); } }
+
+
+
+        function prepareModel(item) {
+            let sceneData = null;
+            if (loadedModels[item.id]) sceneData = loadedModels[item.id].scene;
+            else if (item.modelFile && loadedModels[item.modelFile]) sceneData = loadedModels[item.modelFile].scene;
+
+            if (!sceneData) return null;
+
+            const raw = sceneData.clone();
+            raw.traverse(sanitizeMaterial);
+            if (item.fixBottom) { const box = new THREE.Box3().setFromObject(raw); raw.position.y = -box.min.y; }
+            if (item.autoCenter) { const box = new THREE.Box3().setFromObject(raw); const c = new THREE.Vector3(); box.getCenter(c); raw.position.x -= c.x; raw.position.y -= c.y; raw.position.z -= c.z; }
+            if (item.manualOffset) { raw.position.x += (item.manualOffset.x || 0); raw.position.y += (item.manualOffset.y || 0); raw.position.z += (item.manualOffset.z || 0); }
+            
+            raw.scale.set(1,1,1); 
+
+            const group = new THREE.Group();
+            group.add(raw);
+
+
+
+            const s = item.modelScale || 1.0; 
+            group.scale.set(s, s, s);
+
+            // === [新增] 圣诞树专属：让装饰品发光 ===
+// === [修复] 圣诞树发光逻辑 (大树+小树) ===
+            if (item.id === 'ChrismasTree' || item.id === 'ChrismasTree_Small') {
+                group.traverse((child) => {
+                    if (child.isMesh) {
+                        const name = child.name.toLowerCase();
+
+                        // 关键词匹配：星星、灯、彩带、铃铛、球、礼物
+                        let isDecoration = (
+                            name.includes('star') || 
+                            name.includes('light') || 
+                            name.includes('ribbon') || 
+                            name.includes('bell') ||
+                            name.includes('ball') ||
+                            name.includes('present') ||
+                            name.includes('dec')
+                        );
+
+                        // [新增] 特殊补丁：小圣诞树的名字叫 "Bowl"，强制让它也算作装饰
+                        if (item.id === 'ChrismasTree_Small' && name.includes('bowl')) {
+                            isDecoration = true;
+                        }
+
+                        // 排除逻辑：树干树叶不发光 (针对大树)
+                        const isTreeParts = (
+                            name.includes('leaf') || 
+                            name.includes('tree') || 
+                            name.includes('bark') ||
+                            name.includes('trunk')
+                        );
+
+                        if (isDecoration && !isTreeParts) {
+                            child.material.emissive = new THREE.Color(0xffffff);
+                            
+                            // 继承贴图颜色 (金星发金光，绿叶发绿光)
+                            if (child.material.map) {
+                                child.material.emissiveMap = child.material.map;
+                            } else {
+                                child.material.emissive = child.material.color;
+                            }
+
+                            child.material.emissiveIntensity = 0.75; 
+                            child.material.toneMapped = false; 
+                        } else {
+                            child.material.emissiveIntensity = 0;
+                            child.material.toneMapped = true;
+                        }
+                    }
+                });
+            }
+            // ==========================================
+
+
+
+
+            return group;
+        }
+
+        // === 4. 箱子逻辑 ===
+        // [修复] 箱子生成逻辑：使用 Box3 进行严格碰撞检测
+        function spawnMysteryBox(sourceItem) {
+            let x, z, attempts = 0;
+            const boxSize = 0.6; // 箱子大概尺寸
+            
+            do {
+                x = (Math.random() - 0.5) * 8; // 扩大一点范围
+                z = (Math.random() - 0.5) * 8; 
+                attempts++;
+
+                // 创建候选箱子的包围盒
+                const candidateBox = new THREE.Box3();
+                candidateBox.min.set(x - boxSize/2, 0, z - boxSize/2);
+                candidateBox.max.set(x + boxSize/2, 1, z + boxSize/2);
+
+                // 检测与现有家具的碰撞
+                var collision = placedFurniture.some(f => {
+                    const fBox = new THREE.Box3().setFromObject(f);
+                    //稍微缩小家具判定范围(expandByScalar(-0.1))，允许紧贴但重叠
+                    return candidateBox.intersectsBox(fBox.expandByScalar(-0.1));
+                });
+
+            } while (collision && attempts < 50);
+
+            if (collision) {
+                 // 如果尝试50次都找不到空地，就不生成了，避免卡死
+                 return; 
+            }
+
+            let boxMesh; let isTall = false; let realHeight = 0.5;
+            if (loadedModels['box']) {
+                const raw = loadedModels['box'].scene.clone(); raw.traverse(sanitizeMaterial);
+                const box3_raw = new THREE.Box3().setFromObject(raw); const center = new THREE.Vector3(); box3_raw.getCenter(center); raw.position.sub(center); 
+                boxMesh = new THREE.Group(); boxMesh.add(raw);
+                let sx = 0.5, sy = 0.5, sz = 0.5;
+                // 根据来源家具调整箱子大小
+                if (sourceItem && sourceItem.size) {
+                    // 稍微把箱子做大一点点
+                    let tx = Math.max(0.6, sourceItem.size.x * 1.0); 
+                    let ty = Math.max(0.4, sourceItem.size.y * 1.0); 
+                    let tz = Math.max(0.6, sourceItem.size.z * 1.0);
+                    if (sourceItem.id.includes('rug')) ty = 0.3;
+                    
+                    const box3 = new THREE.Box3().setFromObject(raw); const baseSize = new THREE.Vector3(); box3.getSize(baseSize);
+                    sx = baseSize.x > 0.01 ? tx / baseSize.x : 1; sy = baseSize.y > 0.01 ? ty / baseSize.y : 1; sz = baseSize.z > 0.01 ? tz / baseSize.z : 1;
+                }
+                raw.scale.set(sx, sy, sz); isTall = sy > sx * 1.5 || sy > sz * 1.5; if (isTall) raw.rotation.x = Math.PI / 2; raw.updateMatrix(); 
+                const finalBox = new THREE.Box3().setFromObject(raw); raw.position.y -= finalBox.min.y; realHeight = finalBox.max.y - finalBox.min.y;
+            } else {
+                let size = { x: 0.6, y: 0.5, z: 0.6 }; const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z); const boxMat = new THREE.MeshStandardMaterial({ color: 0xcd853f });
+                boxMesh = new THREE.Mesh(boxGeo, boxMat); boxMesh.position.y = size.y / 2; realHeight = size.y;
+            }
+            boxMesh.position.set(x, 0, z); boxMesh.rotation.y = Math.random() * Math.PI * 2;
+            boxMesh.traverse(c => { if(c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+            scene.add(boxMesh); 
+            const boxDbItem = { id: 'mystery_box', name: "快递箱", price: 0, type: 'floor', layer: 1 };
+            const boxFurnitureInstance = new Furniture(boxMesh, boxDbItem); boxFurnitureInstance.isBox = true; boxFurnitureInstance.isTipped = isTall; boxFurnitureInstance.boxHeight = realHeight;
+            placedFurniture.push(boxMesh); showEmote(boxMesh.position, '📦');
+        }
+
+        // === 5. 环境与类 ===
+        function addSkyBacking(mesh, size) {
+            const width = size.x * 0.85; const height = size.y * 0.85;
+            const plane = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: 0xe0f7fa }));
+            const zPos = -size.z / 2 + 0.05; plane.position.set(0, 0, zPos); plane.rotation.set(0, 0, 0); plane.userData = { isSky: true };
+            mesh.add(plane); skyPanels.push(plane);
+        }
+
+        // [修改] 天空颜色逻辑：延长日出和日落的过渡时间
+        function getSkyColor(gameTime) {
+            // 定义颜色
+            const nightColor = SKY_COLORS.night;
+            const dawnColor = SKY_COLORS.dawn;
+            const dayColor = SKY_COLORS.day;
+            const duskColor = SKY_COLORS.dusk;
+
+            // 1. 深夜 (20:00 - 05:00)
+            if (gameTime >= 20 || gameTime < 5) {
+                return nightColor;
+            }
+            // 2. 朝阳过渡期 (05:00 - 09:00, 持续4小时)
+            else if (gameTime >= 5 && gameTime < 9) {
+                const ratio = (gameTime - 5) / 4; // 0.0 ~ 1.0
+                return nightColor.clone().lerp(dawnColor, ratio);
+            }
+            // 3. 早上过渡到白天 (09:00 - 10:00, 快速过渡，防止白天太粉)
+            else if (gameTime >= 9 && gameTime < 10) {
+                 const ratio = (gameTime - 9) / 1;
+                 return dawnColor.clone().lerp(dayColor, ratio);
+            }
+            // 4. 正午白天 (10:00 - 15:00)
+            else if (gameTime >= 10 && gameTime < 15) {
+                return dayColor;
+            }
+            // 5. 白天过渡到夕阳 (15:00 - 17:00)
+            else if (gameTime >= 15 && gameTime < 17) {
+                 const ratio = (gameTime - 15) / 2;
+                 return dayColor.clone().lerp(duskColor, ratio);
+            }
+            // 6. 夕阳晚霞 (17:00 - 20:00, 持续3小时)
+            else if (gameTime >= 17 && gameTime < 20) {
+                const ratio = (gameTime - 17) / 3;
+                return duskColor.clone().lerp(nightColor, ratio);
+            }
+            
+            return nightColor; // Fallback
+        }
+
+        // [修复] 环境更新函数：只负责更新数据和UI，不绑定事件
+        function updateEnvironment(dt) {
+            const now = new Date();
+            
+            // 1. 获取真实时间
+            const realHour = now.getHours();
+            const realMin = now.getMinutes();
+            
+            // 2. 确定视觉时间 (visualHour)
+            if (isTimeAuto) {
+                // 自动模式：视觉时间 = 真实时间
+                visualHour = realHour + realMin / 60.0;
+                
+                // 同步 HUD 滑块
+                const hudSlider = document.getElementById('time-slider-hud');
+                if (hudSlider && document.activeElement !== hudSlider) hudSlider.value = visualHour;
+            } 
+
+                        // 3. [修改] 更新新版 HUD UI
+            const displayH = realHour;
+            
+            // 格式化 12小时制 AM/PM
+            const ampm = displayH >= 12 ? 'PM' : 'AM';
+            const hour12 = displayH % 12 || 12; 
+            
+            setDomText('time-text-display', `${hour12}:${realMin.toString().padStart(2,'0')}`);
+            setDomText('time-ampm', ampm);
+            
+            // 更新天气图标 (切换 src)
+            const weatherIcon = document.getElementById('weather-icon-img');
+            if(weatherIcon) {
+                const isDay = (displayH >= 6 && displayH < 18);
+                // 假设你有 icon_sun.png 和 icon_moon.png
+                const targetIcon = isDay ? './assets/ui/icon_sun.png' : './assets/ui/icon_moon.png';
+                if (!weatherIcon.src.includes(targetIcon)) weatherIcon.src = targetIcon;
+            }
+
+            // 4. 渲染天空与光照 (保持不变)
+            const skyColor = getSkyColor(visualHour); 
+            scene.background = skyColor; 
+            document.body.style.backgroundColor = `rgb(${skyColor.r*255},${skyColor.g*255},${skyColor.b*255})`;
+            skyPanels.forEach(panel => { panel.material.color.copy(skyColor); });
+            
+            const angle = (visualHour - 12) / 12 * Math.PI; 
+            const radius = 80; 
+            const sunX = Math.sin(angle) * radius; 
+            const sunY = Math.cos(angle) * radius;
+            
+            if (sunMesh && moonMesh) { 
+                sunMesh.position.set(sunX, sunY, -20); 
+                moonMesh.position.set(-sunX, -sunY, -20); 
+                sunMesh.visible = true; moonMesh.visible = true; 
+            }
+            
+            // 光照强度逻辑 (复用 Phase 1.0 的逻辑)
+            const isDaytime = (visualHour >= 6 && visualHour < 18);
+
+            if (isDaytime) { 
+                let intensityFactor = 1.0;
+                if (visualHour < 9) intensityFactor = (visualHour - 6) / 3; 
+                else if (visualHour > 15) intensityFactor = (18 - visualHour) / 3;
+                
+                if (intensityFactor < 0.1) intensityFactor = 0.1;
+
+                sunLight.intensity = 3.5 * intensityFactor; 
+                sunLight.position.set(sunX, sunY, 10); 
+                hemiLight.intensity = 0.5 + (1.0 * intensityFactor); 
+                
+                placedFurniture.forEach(f => { const light = f.children.find(c => c.isLight); if (light) light.visible = false; }); 
+            } else { 
+                sunLight.intensity = 0; 
+                hemiLight.intensity = 0.6; 
+                placedFurniture.forEach(f => { const light = f.children.find(c => c.isLight); if (light) light.visible = true; }); 
+            }
+        }
+
+        // === [新增] 后期处理逻辑 ===
+        let composer;
+
+        function initPostProcessing() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            composer = new EffectComposer(renderer);
+            
+            // 1. 基础场景渲染
+            const renderPass = new RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            // 2. SSAO (环境光遮蔽) - 增加角落阴影和立体感
+            // 它是 Zelda/动森风格的关键，让物体"落地"而不是飘着
+            const saoPass = new SAOPass(scene, camera, false, true);
+            saoPass.params.output = 0; 
+            saoPass.params.saoBias = 0.5;
+            saoPass.params.saoIntensity = 0.05; // 阴影强度，越大约黑
+            saoPass.params.saoScale = 100;
+            saoPass.params.saoKernelRadius = 30;
+            composer.addPass(saoPass);
+
+            // 3. Bloom (辉光) - 让灯光和窗户有柔和光晕
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
+            bloomPass.threshold = 0.95; // 提高阈值：只有真正的灯泡、窗户高光才会发光，地板不发光
+            bloomPass.strength = 0.15;  // 降低强度：防止画面太“仙”，变得清晰
+            bloomPass.radius = 0.5;
+            composer.addPass(bloomPass);
+
+            // 4. SMAA (抗锯齿) - 消除锯齿边缘
+            const smaaPass = new SMAAPass(width, height);
+            composer.addPass(smaaPass);
+
+            // 5. Output (色彩输出) - 确保色彩空间正确
+            const outputPass = new OutputPass();
+            composer.addPass(outputPass);
+        }
+
+        // === [新增] 后期处理逻辑结束 ===
+
+        class Furniture {
+            constructor(mesh, dbItem) {
+                this.mesh = mesh; this.dbItem = dbItem; this.mesh.userData.parentClass = this; 
+                this.functionalState = null; this.isBox = false; this.modelEmpty = null; this.modelFull = null;
+                if (this.dbItem.type === 'functional') { this.initFunctionalState(); }
+            }
+
+            initFunctionalState() {
+                if (this.mesh.children.length > 0) { this.modelEmpty = this.mesh.children[0]; }
+                if (this.dbItem.fullModelFile) {
+                    const fullItemConfig = { ...this.dbItem, id: this.dbItem.id + '_full', modelFile: this.dbItem.fullModelFile };
+                    const fullGroup = prepareModel(fullItemConfig);
+                    if (fullGroup) {
+                        this.modelFull = fullGroup.children[0]; 
+                        this.mesh.add(this.modelFull); 
+                    } else {
+                        logToScreen(`Warning: Full model missing: ${this.dbItem.fullModelFile}`, 'error');
+                    }
+                }
+                
+                if (this.dbItem.subType === 'food') this.functionalState = 'full';
+                else if (this.dbItem.subType === 'toilet') this.functionalState = 'clean';
+                
+                this.updateVisuals();
+            }
+
+            updateVisuals() {
+                if (!this.modelEmpty) return;
+                const setVis = (emptyVis, fullVis) => {
+                    this.modelEmpty.visible = emptyVis;
+                    if(this.modelFull) this.modelFull.visible = fullVis;
+                }
+                if (this.dbItem.subType === 'food') {
+                    this.functionalState === 'full' ? setVis(false, true) : setVis(true, false);
+                } else if (this.dbItem.subType === 'toilet') {
+                    this.functionalState === 'clean' ? setVis(false, true) : setVis(true, false);
+                }
+            }
+
+            interact() {
+                const needsRefill = (this.dbItem.subType === 'food' && this.functionalState === 'empty') || 
+                                    (this.dbItem.subType === 'toilet' && this.functionalState === 'dirty');
+
+                if (needsRefill) {
+                    let title = this.dbItem.subType === 'food' ? "补充猫粮?" : "清理猫砂?";
+                    showConfirmDialog(title, "需要消耗 10 爱心", () => {
+                        this.confirmRefill();
+                    });
+                    return true;
+                }
+                return false;
+            }
+
+            confirmRefill() {
+                if (heartScore >= 10) {
+                    updateMoney(-10);
+
+
+                    if (this.dbItem.subType === 'food') {
+                        this.functionalState = 'full'; 
+                        showEmote(this.mesh.position, '🍚'); 
+                        updateStatusText("猫粮已加满");
+                        diaryManager.logEvent('feed', {}, 50); 
+
+                    } else {
+                        this.functionalState = 'clean'; 
+                        showEmote(this.mesh.position, '✨'); 
+                        updateStatusText("猫砂盆已清理");
+                        // [修改] 调用 logEvent，给铲屎一个权重
+                        diaryManager.logEvent('clean', {}, 50); 
+                    }
+                    this.updateVisuals();
+                    gameSaveManager.saveGame(); // 也要存盘
+
+                } else {
+                    alert("爱心不足！");
+                }
+                gameSaveManager.saveGame();
+
+
+            }
+
+            useByCat() {
+                if (this.dbItem.subType === 'food' && this.functionalState === 'full') {
+                    this.functionalState = 'empty'; this.updateVisuals(); showEmote(this.mesh.position, '😋');
+                } else if (this.dbItem.subType === 'toilet' && this.functionalState === 'clean') {
+                    this.functionalState = 'dirty'; this.updateVisuals(); showEmote(this.mesh.position, '💩');
+                }
+
+                gameSaveManager.saveGame();
+            }
+        }
+
+        // [重构] 日记管理器：加入离线事件与权重筛选
+        class DiaryManager {
+            constructor() {
+                this.storageKey = 'cat_game_diary_v1';
+                this.entries = {}; // 结构: { "YYYY-MM-DD": { meta: {}, events: [] } }
+                this.eventCooldowns = {};
+                this.viewingDate = new Date();
+                
+                this.MAX_ENTRIES_PER_DAY = 10; // [新增] 每日日记上限
+
+                this.load();
+                this.init(); // [新增] 在构造函数中调用初始化，处理离线事件
+            }
+
+            // [新增] 初始化逻辑：处理离线事件
+            init() {
+                const now = Date.now();
+                const lastLogin = localStorage.getItem('last_login_time');
+                
+                if (lastLogin) {
+                    const lastLoginTime = parseInt(lastLogin);
+                    const offlineDurationHours = (now - lastLoginTime) / (1000 * 60 * 60);
+
+                    if (offlineDurationHours >= 1) { // 至少离线1小时才补算
+                        // [新增] 离线事件补算
+                        this.generateOfflineEvents(offlineDurationHours);
+                    }
+                }
+                localStorage.setItem('last_login_time', now.toString()); // 更新上次登录时间
+            }
+
+            formatDateKey(date) {
+                return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2,'0')}-${date.getDate().toString().padStart(2,'0')}`;
+            }
+
+            // [补回缺失的函数]
+            getTodayKey() { 
+                return this.formatDateKey(new Date()); 
+            }
+
+            getTimeString() {
+                const now = new Date();
+                return `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            }
+
+            // [修复] 读取存档 (增加旧数据兼容)
+            load() {
+                const saved = localStorage.getItem(this.storageKey);
+                if (saved) {
+                    try { 
+                        this.entries = JSON.parse(saved); 
+                        
+                        // 检查数据格式是否为 V4 新版结构
+                        // 如果 entries 的某个 value 是数组（旧版），则强制重置或升级
+                        // 这里简单粗暴：如果发现旧数据，直接清空（反正还在开发阶段）
+                        const keys = Object.keys(this.entries);
+                        if (keys.length > 0) {
+                            const firstVal = this.entries[keys[0]];
+                            if (Array.isArray(firstVal)) { // 旧版结构是数组
+                                console.warn("Detected old diary format, resetting...");
+                                this.entries = {}; // 清空旧数据，防止报错
+                            }
+                        }
+                    } 
+                    catch(e) { console.error("Diary load failed", e); this.entries = {}; }
+                }
+            }
+
+            save() {
+                localStorage.setItem(this.storageKey, JSON.stringify(this.entries));
+            }
+
+            // [新增] 添加原始事件到“待处理池”，不直接写入
+            // 事件权重：极度不满100, 巨大成就80, 特殊互动60, 日常20, 神秘10
+            pendingEvents = []; // 暂存池
+
+            logEvent(eventType, params = {}, weight = 20) { // 默认权重 20
+                // 1. 冷却检查
+                const cooldownTime = eventType.startsWith('pet') ? 10 * 60 * 1000 : 60 * 1000;
+                const now = Date.now();
+                if (this.eventCooldowns[eventType] && (now - this.eventCooldowns[eventType] < cooldownTime)) return;
+                this.eventCooldowns[eventType] = now;
+
+                // 2. 生成文案 (依然支持特定ID)
+                let text = '';
+                if (params.id && DIARY_CONFIG.specific_items[params.id]) {
+                    const specifics = DIARY_CONFIG.specific_items[params.id];
+                    text = specifics[Math.floor(Math.random() * specifics.length)];
+                    weight = Math.max(weight, 60); // 特定物品事件权重更高
+                } else {
+                    const templates = DIARY_CONFIG[eventType];
+                    if (!templates || templates.length === 0) return;
+                    text = templates[Math.floor(Math.random() * templates.length)];
+                    if (params.item) text = text.replace('{item}', params.item);
+                }
+
+                // 3. 将事件推入待处理池
+                this.pendingEvents.push({
+                    time: this.getTimeString(),
+                    type: 'interaction', // 默认为交互事件
+                    text: text,
+                    weight: weight,
+                    rawType: eventType // 记录原始类型用于后续处理
+                });
+            }
+
+            // [新增] 离线事件生成逻辑
+            generateOfflineEvents(offlineDurationHours) {
+                const numEvents = Math.min(3, Math.floor(offlineDurationHours / 2)); // 每2小时生成1个，最多3个
+                if (numEvents === 0) return;
+
+                updateStatusText(`检测到离线 ${offlineDurationHours.toFixed(1)} 小时，正在生成日记...`);
+                
+                for (let i = 0; i < numEvents; i++) {
+                    let eventPool = DIARY_CONFIG.offline_events;
+                    
+                    // 随机抽取事件 (带权重)
+                    let totalWeight = eventPool.reduce((sum, e) => sum + e.weight, 0);
+                    let randomPoint = Math.random() * totalWeight;
+                    
+                    let chosenEvent = null;
+                    for (const event of eventPool) {
+                        randomPoint -= event.weight;
+                        if (randomPoint <= 0) {
+                            chosenEvent = event;
+                            break;
+                        }
+                    }
+
+                    if (chosenEvent) {
+                        const text = chosenEvent.text[Math.floor(Math.random() * chosenEvent.text.length)];
+                        // 替换离线时长
+                        const final_text = text.replace('{hours}', offlineDurationHours.toFixed(1));
+                        
+                        this.pendingEvents.push({
+                            time: this.getTimeString(), // 离线事件时间戳用当前登录时间
+                            type: 'offline',
+                            text: final_text,
+                            weight: chosenEvent.weight,
+                            rawType: 'offline_event'
+                        });
+                    }
+                }
+            }
+
+
+            // [新增] 将待处理事件写入每日日记（带权重筛选和上限）
+            flushPendingEvents() {
+                if (this.pendingEvents.length === 0) return;
+
+                const key = this.getTodayKey();
+                if (!this.entries[key]) {
+                    this.entries[key] = {
+                        meta: this.generateDailyMeta(), // 生成日记头部元数据
+                        events: []
+                    };
+                }
+                
+                let currentDayEntries = this.entries[key].events;
+                
+                // 1. 合并待处理事件到当前日期的事件列表中
+                // 我们不直接清空 pendingEvents，而是每次都重新筛选一遍所有事件
+                // 这样可以确保优先级最高的事件永远被记录
+                
+                currentDayEntries.push(...this.pendingEvents);
+                this.pendingEvents = []; // 清空待处理池
+
+                // 2. 按权重排序
+                currentDayEntries.sort((a, b) => b.weight - a.weight);
+
+                // 3. 去重 (更智能的去重，基于内容)
+                const uniqueEntries = [];
+                const seenTexts = new Set();
+                for (const entry of currentDayEntries) {
+                    if (!seenTexts.has(entry.text)) {
+                        uniqueEntries.push(entry);
+                        seenTexts.add(entry.text);
+                    }
+                }
+                currentDayEntries = uniqueEntries;
+
+                // 4. 裁剪到最大条目数
+                if (currentDayEntries.length > this.MAX_ENTRIES_PER_DAY) {
+                    currentDayEntries = currentDayEntries.slice(0, this.MAX_ENTRIES_PER_DAY);
+                }
+                
+                this.entries[key].events = currentDayEntries; // 更新日记
+                this.save();
+                this.updateUIHint(true);
+            }
+
+            // [新增] 生成每日元数据 (天气、心情、关键词)
+            generateDailyMeta() {
+                const metaConfig = DIARY_CONFIG.diary_meta;
+                return {
+                    weather: metaConfig.weathers[Math.floor(Math.random() * metaConfig.weathers.length)],
+                    mood: metaConfig.moods[Math.floor(Math.random() * metaConfig.moods.length)],
+                    keyword: metaConfig.keywords[Math.floor(Math.random() * metaConfig.keywords.length)]
+                };
+            }
+
+
+            // [修改] 渲染当前查看页面的日记
+            renderPage() {
+                const container = document.getElementById('diary-entries');
+                const dateTitle = document.getElementById('diary-date-title'); 
+                const weatherMeta = document.getElementById('diary-weather');
+                const moodMeta = document.getElementById('diary-mood');
+
+                const key = this.formatDateKey(this.viewingDate);
+                const dayEntry = this.entries[key];
+                const list = dayEntry ? dayEntry.events : [];
+
+                // [修复] 增加对 meta 是否存在的检查
+                if (dateTitle) dateTitle.innerText = key;
+                
+                // 检查 dayEntry.meta 是否存在，防止报错
+                const hasMeta = dayEntry && dayEntry.meta;
+                if (weatherMeta) weatherMeta.innerText = hasMeta ? dayEntry.meta.weather : '暂无记录';
+                if (moodMeta) moodMeta.innerText = hasMeta ? dayEntry.meta.mood : '心情随笔';
+
+                container.innerHTML = ''; 
+
+                if (list.length === 0) {
+                    container.innerHTML = '<div class="entry empty-tip">这一天猫咪很懒，没有留下记录...</div>';
+                    return;
+                }
+
+                list.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'entry';
+                    div.innerHTML = `<div class="entry-time">${item.time}</div><div class="entry-text">${item.text}</div>`;
+                    container.appendChild(div);
+                });
+            }
+            // [补回缺失的函数]
+            updateUIHint(hasNew) {
+                const dot = document.getElementById('diary-red-dot-hud'); // 修改ID
+                if(dot) dot.style.display = hasNew ? 'block' : 'none';
+            }
+            
+            clearAll() {
+                this.entries = {};
+                this.save();
+                // 如果当前正好开着日记，刷新一下页面
+                const modal = document.getElementById('diary-modal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    this.renderPage();
+                }
+            }
+        }
+
+
+        // === [新增] 游戏存档管理器 ===
+        class GameSaveManager {
+            constructor() {
+                this.saveKey = 'cat_game_save_v1';
+                // 自动保存间隔 (30秒)
+                setInterval(() => this.saveGame(), 30000);
+            }
+
+            // 收集当前游戏数据并保存
+            saveGame() {
+                if (!cats[0]) return; // 还没初始化好
+
+                const saveData = {
+                    // 1. 基础数据
+                    heartScore: heartScore,
+                    activeDecor: activeDecorId, // 装修状态
+                    
+                    // 2. 猫咪状态 (只存一只)
+                    catStats: {
+                        hunger: cats[0].stats.hunger,
+                        toilet: cats[0].stats.toilet,
+                        // 甚至可以存位置，但为了简单，下次登录重置位置比较安全
+                    },
+
+                    // 3. 家具列表
+                    furniture: placedFurniture.map(f => {
+                        const p = f.userData.parentClass;
+                        return {
+                            id: p.dbItem.id, // 核心ID
+                            pos: { x: f.position.x, y: f.position.y, z: f.position.z },
+                            rot: { y: f.rotation.y },
+                            // 如果是功能性家具，存状态 (full/empty)
+                            funcState: p.functionalState, 
+                            // 标记是否是箱子 (虽然箱子一般不存，但如果为了保留也要存)
+                            isBox: p.isBox,
+                            isTipped: p.isTipped,
+                            boxHeight: p.boxHeight
+                        };
+                    })
+                };
+
+                localStorage.setItem(this.saveKey, JSON.stringify(saveData));
+                console.log("Game Saved:", saveData);
+            }
+
+            // 读取并恢复游戏
+            loadGame() {
+                const json = localStorage.getItem(this.saveKey);
+                if (!json) return false; // 没有存档
+
+                try {
+                    const data = JSON.parse(json);
+                    
+                    // 1. 恢复金钱
+                    if (data.heartScore !== undefined) {
+                        heartScore = data.heartScore;
+                        setDomText('heart-text-display', heartScore);
+                    }
+
+                    // 2. 恢复装修 (地板/墙壁)
+                    if (data.activeDecor) {
+                        activeDecorId = data.activeDecor;
+                        if (activeDecorId.floor) {
+                            const item = FURNITURE_DB.find(i => i.id === activeDecorId.floor);
+                            if (item) applyDecorVisuals(item);
+                        }
+                        if (activeDecorId.wall) {
+                            const item = FURNITURE_DB.find(i => i.id === activeDecorId.wall);
+                            if (item) applyDecorVisuals(item);
+                        }
+                    }
+
+                    // 3. 恢复猫咪状态 (需要等猫生成后调用，这里先存个临时变量，或者手动赋值)
+                    // 更好的方式是：loadGame 返回数据，由 startGame 分发
+                    return data;
+
+                } catch (e) {
+                    console.error("Save file corrupted", e);
+                    return false;
+                }
+            }
+        }
+        
+        const gameSaveManager = new GameSaveManager();
+
+        class Cat {
+            constructor(scene, color) {
+                this.scene = scene; 
+                this.state = 'idle'; 
+                this.stats = { hunger: 80, toilet: 80 };
+                this.targetFurniture = null; this.nextAction = null; 
+                this.bubbleEl = document.getElementById('cat-bubble'); this.bubbleIcon = document.getElementById('bubble-icon');
+                this.targetPos = new THREE.Vector3(); this.stopPos = new THREE.Vector3(); 
+                this.jumpStart = new THREE.Vector3(); this.jumpEnd = new THREE.Vector3();   
+                this.interactTarget = null; this.timer = 0; this.mixer = null; this.actions = {}; this.isAnimated = false;
+                this.petCount = 0; this.patience = 5 + Math.floor(Math.random() * 6); this.angryTime = 0; 
+                this.sleepMinDuration = 0; 
+
+                this.mesh = new THREE.Group(); this.scene.add(this.mesh); 
+                this.downRay = new THREE.Raycaster(); this.downRay.ray.direction.set(0,-1,0); 
+                this.forwardRay = new THREE.Raycaster();
+
+                try {
+                    if (loadedModels['cat']) {
+                        const model = SkeletonUtils.clone(loadedModels['cat'].scene);
+                        model.scale.set(CAT_CONFIG.scale, CAT_CONFIG.scale, CAT_CONFIG.scale);
+                        model.position.y = CAT_CONFIG.yOffset; model.rotation.x = CAT_CONFIG.rotateX; model.rotation.y = CAT_CONFIG.rotateY;
+                        this.mesh.add(model);
+                        if (loadedModels['cat'].animations.length > 0) {
+                            this.isAnimated = true; this.mixer = new THREE.AnimationMixer(model);
+                            const anims = loadedModels['cat'].animations; 
+                            const getAnim = (idx) => anims[idx] || anims[0];
+                            this.actions['sleep'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.sleep));
+                            this.actions['happy'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.happy));
+                            this.actions['idle']  = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.idle));
+                            this.actions['eat']   = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.eat));
+                            this.actions['urgent']= this.mixer.clipAction(getAnim(CAT_CONFIG.anim.urgent));
+                            this.actions['walk']  = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.walk));
+                            this.actions['sleep'].setLoop(THREE.LoopOnce); 
+                            this.actions['sleep'].clampWhenFinished = true;
+                            this.playAction('idle');
+                            
+                            logToScreen(`Cat loaded with ${anims.length} animations.`);
+                            if (anims.length < 8) logToScreen("Warning: Cat model has fewer than 8 animations!", 'warn');
+                        }
+                    } else { this.mesh.add(this.createBlockCat(color)); }
+                } catch (e) { console.error("Cat error:", e); this.mesh.add(this.createBlockCat(color)); }
+                this.mesh.position.set(0, 0, 0); this.chooseNewAction(); 
+            }
+            createBlockCat(color) { const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:color}); const b=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.3,0.6),m); b.position.y=0.15; g.add(b); const h=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.3,0.3),m); h.position.set(0,0.4,0.4); g.add(h); return g; }
+            showBubble(icon) { if (!this.bubbleEl || !this.bubbleIcon) return; this.bubbleIcon.innerText = icon; this.bubbleEl.classList.remove('hidden'); }
+            hideBubble() { if (!this.bubbleEl) return; this.bubbleEl.classList.add('hidden'); }
+            updateBubblePosition() { if (!this.bubbleEl || this.bubbleEl.classList.contains('hidden')) return; const pos = this.mesh.position.clone(); pos.y += 1.2; pos.project(camera); const x = (pos.x * .5 + .5) * window.innerWidth; const y = (-(pos.y * .5) + .5) * window.innerHeight; this.bubbleEl.style.left = `${x}px`; this.bubbleEl.style.top = `${y}px`; }
+updateUI() { 
+                // [修改] 适配新版 HUD (容器裁剪法)
+                const hungerLevel = document.getElementById('level-hunger');
+                const toiletLevel = document.getElementById('level-toilet');
+                
+                // 直接用 height 百分比
+                // 100% = 满 (容器高度占满 Mask)
+                // 0%   = 空 (容器高度为0，图片看不见)
+                if(hungerLevel) {
+                    hungerLevel.style.height = this.stats.hunger + '%';
+                }
+                if(toiletLevel) {
+                    toiletLevel.style.height = this.stats.toilet + '%';
+                }
+            }
+            
+            playAction(name) { 
+                if(this.isAnimated && this.actions[name] && this.currentAction !== this.actions[name]) { 
+                    if(this.currentAction) this.currentAction.fadeOut(0.2); 
+                    this.actions[name].reset().fadeIn(0.2).play(); 
+                    this.currentAction = this.actions[name]; 
+                } 
+            }
+
+            // [修改] Update (在醒来时记录 lastInteractTarget，并支持拖拽状态)
+            update(dt) {
+                if(this.isAnimated && this.mixer) this.mixer.update(dt);
+                this.decayStats(dt); this.updateBubblePosition(); this.updateUI();
+
+                // [新增] 拖拽状态：什么都不做，位置由鼠标控制
+                if (this.state === 'dragged') {
+                    return;
+                }
+
+                if (this.state === 'sleeping') {
+                    this.sleepMinDuration -= dt;
+                    if ((this.stats.hunger < 5 || this.stats.toilet < 5) || this.sleepMinDuration <= 0) {
+                         
+                         // [新增] 醒来时，记录这张床，下次别马上睡它
+                         this.lastInteractTarget = this.interactTarget;
+
+                         this.state = 'idle'; this.sleepMinDuration = 0;
+                         this.hideBubble(); 
+                         this.resetModelOffset(); 
+                         this.trySpawnHeart(); // 使用新方法
+
+                         this.chooseNewAction(); 
+                    }
+                    return; 
+                }
+
+                // ... 以下保持原有的物理与移动逻辑 ...
+                if (this.state !== 'jumping') {
+                    const rayOrigin = this.mesh.position.clone(); rayOrigin.y = 5; this.downRay.set(rayOrigin, new THREE.Vector3(0,-1,0));
+                    const hitCandidates = [floorPlane, ...placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.dbItem && f.userData.parentClass.dbItem.layer === 1 && !f.userData.parentClass.isBox)];
+                    const hits = this.downRay.intersectObjects(hitCandidates, true); let targetY = 0; if(hits.length > 0) targetY = hits[0].point.y;
+                    this.mesh.position.y += (targetY - this.mesh.position.y) * 0.2;
+                }
+                
+                if(this.interactTarget && (!placedFurniture.includes(this.interactTarget) || !this.interactTarget.visible)) { this.interrupt(); return; }
+                if (this.state === 'angry') { if (Date.now() > this.angryTime) { this.state = 'idle'; this.patience = 5 + Math.floor(Math.random() * 6); this.petCount = 0; updateStatusText("猫咪气消了"); } }
+                
+                if(this.state === 'walking') { this.handleWalkingLogic(dt); } 
+                else if (this.state === 'jumping') { this.updateJumping(dt); } 
+                else if(this.state === 'idle') { this.handleIdleLogic(dt); } 
+                else if(this.state === 'interacting') { this.handleInteractingLogic(dt); } 
+                else if(this.state === 'petting') { this.playAction('happy'); } 
+                else if (this.state === 'begging') { 
+                    this.playAction('happy'); 
+                    this.checkIfNeedsSatisfied(); 
+                    this.mesh.lookAt(camera.position.x, this.mesh.position.y, camera.position.z); 
+                }
+            }
+
+            handleIdleLogic(dt) {
+                this.playAction('idle'); 
+                if (this.stats.hunger < 30) 
+                { 
+                    const foodBowl = this.findAvailableFurniture('food', 'full'); 
+                    if (foodBowl) 
+                    { 
+                        this.targetFurniture = foodBowl; 
+                        this.setPath(foodBowl.userData.parentClass.mesh.position, 0.95); 
+                        this.state = 'walking'; 
+                        this.nextAction = 'EAT'; this.hideBubble(); return; } else { this.showBubble('🐟'); this.state = 'begging'; return; } }
+                if (this.stats.toilet < 40) { const litterBox = this.findAvailableFurniture('toilet', 'clean'); if (litterBox) { this.targetFurniture = litterBox; this.setPath(litterBox.userData.parentClass.mesh.position); this.state = 'walking'; this.nextAction = 'POOP'; this.hideBubble(); return; } else { this.showBubble('💩'); this.state = 'begging'; return; } }
+                this.timer -= dt; if(this.timer <= 0) this.chooseNewAction();
+            }
+
+            handleWalkingLogic(dt) {
+                this.playAction('walk'); 
+                const dir = new THREE.Vector3().subVectors(this.stopPos, this.mesh.position); 
+                dir.y = 0; 
+                const dist = dir.length();
+                
+                // 1. 碰撞检测
+                if (dist > 0.5) { 
+                    const forwardDir = dir.clone().normalize(); 
+                    this.forwardRay.set(this.mesh.position.clone().add(new THREE.Vector3(0,0.3,0)), forwardDir); 
+                    
+                    const obstacleMeshes = placedFurniture.filter(f => {
+                        // 关键：行走时，绝对不要把自己要去的目标当成障碍物！
+                        // 否则猫会还没走到，就检测到饭盆的碰撞盒，然后停下来
+                        const isInteractTarget = (this.interactTarget && f === this.interactTarget);
+                        const isFoodTarget = (this.targetFurniture && f === this.targetFurniture);
+                        const isDecor = (f.userData.parentClass && f.userData.parentClass.dbItem.layer === 0);
+                        return !isInteractTarget && !isFoodTarget && !isDecor;
+                    });
+
+                    const cols = this.forwardRay.intersectObjects(obstacleMeshes, true); 
+                    // 增加判定距离，避免过于敏感
+                    if(cols.length > 0 && cols[0].distance < 0.4) { 
+                        this.chooseNewAction(); 
+                        return; 
+                    } 
+                }
+
+                // 2. 到达检测
+                if (dist < 0.1) { 
+                    // [新增] 安全检查：如果离目标家具的实际中心还很远，说明是"假到达" (可能是StopPos计算错了)
+                    if (this.targetFurniture) {
+                        const distToRealTarget = new THREE.Vector3().subVectors(this.targetFurniture.position, this.mesh.position);
+                        distToRealTarget.y = 0;
+                        // 如果离中心点超过 1.5米，说明停得太远了，可能是被卡住了或者计算错误
+                        // 这种情况下，强制瞬移过去 (或者继续走)
+                        if (distToRealTarget.length() > 1.5) {
+                            // 强制修正位置到停止点 (瞬移修复)
+                            this.mesh.position.x = this.stopPos.x;
+                            this.mesh.position.z = this.stopPos.z;
+                        }
+                    }
+                    this.onArriveDest(); 
+                } else { 
+                    dir.normalize(); 
+                    this.mesh.position.add(dir.multiplyScalar(2.0 * dt)); 
+                    this.mesh.lookAt(this.stopPos.x, this.mesh.position.y, this.stopPos.z); 
+                }
+            }
+
+            // [新增] 辅助：恢复模型默认位置（用于修正睡觉偏移）
+            resetModelOffset() {
+                if(this.mesh.children.length > 0) {
+                    this.mesh.children[0].position.x = 0; // 假设默认是0
+                    // 保持Y轴 (CAT_CONFIG.yOffset 可能会用到，这里简单假设归零或保留原逻辑)
+                    // 如果原模型有特定yOffset，最好在这里读取 CAT_CONFIG.yOffset
+                    // 根据代码上下文: model.position.y = CAT_CONFIG.yOffset
+                    this.mesh.children[0].position.y = CAT_CONFIG.yOffset || 0;
+                    this.mesh.children[0].position.z = 0;
+                }
+            }
+
+
+            // [修改] 交互逻辑 (也使用 trySpawnHeart)
+            handleInteractingLogic(dt) {
+                const isInsideBox = this.interactTarget && this.interactTarget.userData.parentClass && this.interactTarget.userData.parentClass.isBox && !this.interactTarget.userData.parentClass.isTipped;
+                if (isInsideBox) { this.playAction('sleep'); } else { this.playAction('idle'); } 
+                
+                this.timer -= dt; 
+                
+                if(this.timer <= 0) { 
+                    // [新增] 记录刚才玩过的东西
+                    this.lastInteractTarget = this.interactTarget;
+
+                    // 使用新方法
+                    this.trySpawnHeart();
+
+                    if (isInsideBox) { this.mesh.position.copy(this.jumpStart); this.mesh.position.y = 0; } 
+                    this.leaveInteraction(); 
+                }
+            }
+
+
+            startJump() { this.state = 'jumping'; this.playAction('idle'); this.jumpTimer = 0; this.jumpDuration = 0.6; this.jumpStart.copy(this.mesh.position); this.jumpEnd.copy(this.interactTarget.position); let h = this.interactTarget.userData.parentClass.boxHeight || 0.5; this.jumpEnd.y = h * 0.5; if (this.jumpEnd.y < 0.2) this.jumpEnd.y = 0.2; }
+            updateJumping(dt) {
+                this.jumpTimer += dt; let t = this.jumpTimer / this.jumpDuration; if (t > 1) t = 1;
+                this.mesh.position.x = THREE.MathUtils.lerp(this.jumpStart.x, this.jumpEnd.x, t); this.mesh.position.z = THREE.MathUtils.lerp(this.jumpStart.z, this.jumpEnd.z, t);
+                const height = this.jumpEnd.y + 0.5; const yBase = THREE.MathUtils.lerp(this.jumpStart.y, this.jumpEnd.y, t); const yArc = Math.sin(t * Math.PI) * height; this.mesh.position.y = yBase + yArc; this.mesh.lookAt(this.jumpEnd.x, this.mesh.position.y, this.jumpEnd.z);
+                if (t >= 1) { this.mesh.rotation.x = 0; this.mesh.rotation.z = 0; this.enterInteraction(); }
+            }
+
+            // [新增] 检查并产生爱心 (解决问题3)
+            trySpawnHeart() {
+                // 如果饿死或憋坏了，就不给爱心
+                if (this.stats.hunger <= 0 || this.stats.toilet <= 0) {
+                    showEmote(this.mesh.position, '🚫'); // 提示玩家
+                    return;
+                }
+                spawnHeart(this.mesh.position);
+            }
+
+            // [新增] 设置拖拽状态 (解决问题2)
+            setDragged(isDragged) {
+                if (isDragged) {
+                    this.state = 'dragged';
+                    this.interactTarget = null;
+                    this.targetFurniture = null;
+                    this.hideBubble();
+                    this.resetModelOffset();
+                    // 播放动作 5 (Urgent/Struggle)
+                    // 确保映射正确：Action 5 对应 Urgent
+                    this.playAction('urgent'); 
+                } else {
+                    // 放下后，重置为 idle，并让它自己决定下一步
+                    this.state = 'idle';
+                    this.playAction('idle');
+                    // 稍微给点延迟再思考，避免瞬间乱跑
+                    this.timer = 1.0; 
+                }
+            }
+
+            pet() { 
+                // 拖拽中不处理
+                if (this.state === 'dragged') return; 
+
+                // 状态检查
+                if (this.state === 'angry') { showEmote(this.mesh.position, '💢'); return; } 
+                
+                // [新增] 如果太饿或想上厕所，拒绝抚摸，并提示需求
+                if (this.stats.hunger < 30) { 
+                    showEmote(this.mesh.position, '🐟'); 
+                    diaryManager.logEvent('pet_angry'); // <--- 记录：饿了不给摸
+                    return; 
+                }
+                if (this.stats.toilet < 30) { 
+                    showEmote(this.mesh.position, '💩'); 
+                    diaryManager.logEvent('pet_angry'); // <--- 记录：急着上厕所不给摸
+                    return; 
+                }
+
+                this.hideBubble(); 
+                this.resetModelOffset();
+
+                if (this.petCount >= this.patience) { 
+                    showEmote(this.mesh.position, '💢'); 
+                    this.state = 'angry'; 
+                    this.angryTime = Date.now() + 15 * 60 * 1000; 
+                    this.chooseNewAction(); 
+                    updateStatusText("猫咪生气了 (15m CD)");
+                    diaryManager.logEvent('pet_angry', {}, 100); // 愤怒抚摸权重高一点
+                } 
+                else { 
+                    this.petCount++; 
+                    this.trySpawnHeart(); 
+                    showEmote(this.mesh.position, '😻'); 
+                    this.state = 'petting'; 
+
+                    // [新增] 成功抚摸日记
+                    // 只有当 petCount 累积到一定程度(比如3次)或者随机概率记录，避免刷屏
+                    // 这里我们利用 DiaryManager 自带的重复文本过滤，直接调用
+                    diaryManager.logEvent('pet_happy', {}, 20); // 友好抚摸权重 
+
+                    if (this.resetTimer) clearTimeout(this.resetTimer); 
+                    this.resetTimer = setTimeout(() => { 
+                        if (this.state === 'petting') this.state = 'idle'; 
+                    }, 2000); 
+                } 
+            }
+
+            resetCooldown() 
+            { 
+                this.angryTime = 0; this.state = 'idle'; this.petCount = 0; this.patience = 10; showEmote(this.mesh.position, '❤️'); }
+            
+            // [修改] 中断行为：增加 hideBubble 和 resetOffset
+            interrupt() { 
+                showEmote(this.mesh.position,'❓'); 
+                this.state='idle'; 
+                this.interactTarget=null; 
+                this.timer=1; 
+                this.hideBubble();     // 修复：必须隐藏气泡
+                this.resetModelOffset(); // 修复：恢复模型偏移
+            }
+
+            leaveInteraction() { this.state = 'idle'; this.interactTarget = null; this.timer = 1; }
+
+            // [修改] 行为选择 (解决问题1：避免重复选择同一家具)
+            // [修复] 行为选择：适配新的时间变量 visualHour
+            chooseNewAction() {
+                // 原来是 gameTime，现在改为 visualHour
+                const isDay = (visualHour >= 6 && visualHour < 18);
+                
+                const boxes = placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.isBox);
+                const sleepers = placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.dbItem.canSleep);
+                const others = placedFurniture.filter(f => f.userData.parentClass && !f.userData.parentClass.isBox && !f.userData.parentClass.dbItem.canSleep && f.userData.parentClass.dbItem.layer === 1);
+
+                // [新增] 过滤掉上一次刚互动过的对象 (防止原地睡觉循环)
+                const filterLast = (arr) => arr.filter(item => item !== this.lastInteractTarget);
+
+                let rnd = Math.random();
+                let target = null;
+                
+                // 优先检查盒子
+                const availBoxes = filterLast(boxes);
+                if (availBoxes.length > 0 && rnd < 0.6) { 
+                    target = availBoxes[Math.floor(Math.random() * availBoxes.length)]; 
+                }
+                else {
+                    let sleepRnd = Math.random();
+                    // 根据白天黑夜调整睡觉概率
+                    let wantSleep = isDay ? (sleepRnd < 0.7) : (sleepRnd < 0.3); 
+                    
+                    const availSleepers = filterLast(sleepers);
+                    if (wantSleep && availSleepers.length > 0) { 
+                        target = availSleepers[Math.floor(Math.random() * availSleepers.length)]; 
+                    } 
+                    else { 
+                        const availOthers = filterLast(others);
+                        if (availOthers.length > 0 && Math.random() < 0.5) { 
+                            target = availOthers[Math.floor(Math.random() * availOthers.length)]; 
+                        } else { 
+                            target = null; 
+                        } 
+                    }
+                }
+
+                if(target) { 
+                    this.interactTarget = target; 
+                    const dist = (target.userData.parentClass.dbItem.canSleep) ? 0.5 : 0.7;
+                    this.setPath(target.position, dist); 
+                    this.state = 'walking'; 
+                } 
+                else { 
+                    this.lastInteractTarget = null;
+                    this.interactTarget = null; 
+                    const randPos = new THREE.Vector3((Math.random()-0.5)*8, 0, (Math.random()-0.5)*8); 
+                    this.setPath(randPos); 
+                    this.state = 'walking'; 
+                }
+            }
+
+            // [修复] 进入交互：智能对齐家具方向，防止穿模
+            enterInteraction() { 
+                if (this.interactTarget && this.interactTarget.userData.parentClass && this.interactTarget.userData.parentClass.dbItem.canSleep) {
+                    this.state = 'sleeping';
+                    this.sleepMinDuration = 10.0 + Math.random() * 10.0;
+                    this.playAction('sleep'); 
+                    this.showBubble('💤');
+
+                    // 1. 位置归位：先移到家具中心
+                    this.mesh.position.copy(this.interactTarget.position);
+
+                    // 2. 旋转对齐：获取家具的旋转角度
+                    const furnRotation = this.interactTarget.rotation.y;
+                    
+                    // 让猫咪的朝向与家具一致 (或者转90度，看模型情况)
+                    // 假设猫咪默认朝向是Z轴，我们让它和家具方向一致，这样坐标系就统一了
+                    this.mesh.rotation.y = furnRotation; 
+
+                    // 3. 局部偏移计算：解决穿模与靠背问题
+                    // 现在的 Z 是相对于家具的“正前方”的
+                    // 如果靠背在家具的 -Z (局部)，我们就要往 +Z 移
+                    // 使用 Vector3.applyAxisAngle 来计算世界坐标下的偏移
+                    const localOffset = new THREE.Vector3(0, 0, 0.25); // 往“前”挪 0.25
+                    
+                    // 有些长条形家具（如床/沙发），可能需要沿着 X 轴稍微随机一点，不要每次都睡正中间
+                    const randomX = (Math.random() - 0.5) * 0.4; 
+                    localOffset.x += randomX;
+
+                    // 将局部偏移转换为世界偏移并应用
+                    localOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), furnRotation);
+                    this.mesh.position.add(localOffset);
+
+                    // 4. 高度修正
+                    const itemSize = this.interactTarget.userData.parentClass.dbItem.size;
+                    if(itemSize) {
+                        this.mesh.position.y += (itemSize.y * 0.5) + 0.3;
+                    }
+
+                    // 5. 模型内部微调 (模型本身的重心偏差修正)
+                    if(this.mesh.children.length > 0) {
+                        // 稍微向右一点，抵消倒下动画的位移
+                        this.mesh.children[0].position.set(0.2, CAT_CONFIG.yOffset || 0, 0); 
+                    }
+                    return;
+                }
+
+                // ... 其他交互逻辑 (玩箱子等) 保持不变 ...
+                this.state = 'interacting'; 
+                this.timer = 5 + Math.random() * 5; 
+                if (this.interactTarget && this.interactTarget.userData.parentClass && this.interactTarget.userData.parentClass.isBox) { this.timer = 8; showEmote(this.mesh.position, '📦'); }
+                if(this.interactTarget) { 
+                    const isInsideBox = this.interactTarget.userData.parentClass && this.interactTarget.userData.parentClass.isBox && !this.interactTarget.userData.parentClass.isTipped; 
+                    if (!isInsideBox) { this.mesh.rotation.y = Math.random() * Math.PI * 2; } 
+                }
+            }
+
+// [修复] 设置路径：针对吃饭行为，缩小停止距离，并强制更新状态
+            setPath(targetPosition, stopDist = 0.7) { 
+                this.targetPos.copy(targetPosition); 
+                
+                // 计算方向：从目标指向猫 (为了反向推算停止点)
+                const vec = new THREE.Vector3().subVectors(this.mesh.position, targetPosition); 
+                vec.y = 0; // 忽略高度差
+                vec.normalize(); 
+                
+                // [针对吃饭的修正]
+                // 检查 interactTarget 或 targetFurniture 是否是食物
+                // 注意：chooseNewAction 设置 interactTarget，但 handleIdleLogic 设置 targetFurniture
+                let isFood = false;
+                if (this.targetFurniture && this.targetFurniture.userData.parentClass && this.targetFurniture.userData.parentClass.dbItem.subType === 'food') {
+                    isFood = true;
+                }
+
+                if (isFood) {
+                    stopDist = 0.5; // 离饭盆更近
+                }
+
+                // 计算停止点：目标点 + 方向 * 距离
+                this.stopPos.copy(targetPosition).add(vec.multiplyScalar(stopDist));
+            }
+
+            // [修改] 生理需求衰减：调整比例为 3吃 : 2拉
+            decayStats(dt) { 
+                // 饥饿加快 (0.5 -> 0.6)，如厕变慢 (0.4 -> 0.3)
+                this.stats.hunger -= 0.6 * dt; 
+                this.stats.toilet -= 0.3 * dt; 
+                
+                if(this.stats.hunger < 0) this.stats.hunger = 0; 
+                if(this.stats.toilet < 0) this.stats.toilet = 0; 
+            }
+            findAvailableFurniture(subType, requiredState) { return placedFurniture.find(f => f.userData.parentClass && f.userData.parentClass.dbItem.subType === subType && f.userData.parentClass.functionalState === requiredState); }
+            checkIfNeedsSatisfied() { this.playAction('idle'); if (this.stats.hunger < 30) { const food = this.findAvailableFurniture('food', 'full'); if (food || this.stats.hunger > 90) { this.state = 'idle'; this.hideBubble(); } } if (this.stats.toilet < 40) { const box = this.findAvailableFurniture('toilet', 'clean'); if (box || this.stats.toilet > 90) { this.state = 'idle'; this.hideBubble(); } } }
+            
+
+// [修改] 到达逻辑：修复猫砂盆高度 & 离开时跳出
+            onArriveDest() {
+                if (!this.targetFurniture) { 
+                    this.enterInteraction(); 
+                    this.nextAction = null; 
+                    this.targetFurniture = null;
+                    return;
+                }
+                
+                const parent = this.targetFurniture.userData.parentClass;
+                if (parent && parent.isBox && !parent.isTipped) { this.startJump(); return; }
+                
+                if (this.nextAction === 'EAT') { 
+                    this.state = 'eating'; 
+                    this.playAction('eat'); 
+                    if(this.targetFurniture.position) this.mesh.lookAt(this.targetFurniture.position.x, this.mesh.position.y, this.targetFurniture.position.z); 
+                    setTimeout(() => { 
+                        if(this.state !== 'eating') return; 
+                        this.stats.hunger = 100; 
+                        if(this.targetFurniture && this.targetFurniture.userData.parentClass) this.targetFurniture.userData.parentClass.useByCat(); 
+                        this.state = 'idle'; this.timer = 2; this.trySpawnHeart(); 
+                        this.targetFurniture = null; 
+                    }, 5000); 
+                } 
+                else if (this.nextAction === 'POOP') { 
+                    this.state = 'pooping'; 
+                    
+                    this.mesh.position.copy(this.targetFurniture.position);
+                    // [修复] 高度增加：从 0.35 -> 0.55，防止被埋
+                    this.mesh.position.y += 0.55; 
+
+                    this.playAction('urgent'); 
+                    this.mesh.rotation.y = Math.random() * Math.PI * 2;
+                    
+                    setTimeout(() => { 
+                        if(this.state !== 'pooping') return; 
+                        
+                        this.stats.toilet = 100; 
+                        if(this.targetFurniture && this.targetFurniture.userData.parentClass) this.targetFurniture.userData.parentClass.useByCat(); 
+                        
+                        // [新增] 离开猫砂盆：跳回进入前的位置 (stopPos)
+                        // 这样就避免了被困在猫砂盆模型里面
+                        this.mesh.position.copy(this.stopPos);
+                        // 重置高度为地面
+                        this.mesh.position.y = 0; 
+
+                        this.state = 'idle'; this.timer = 2; this.trySpawnHeart(); 
+                        this.targetFurniture = null; 
+                    }, 4000); 
+                }
+            }
+        }
+
+        // === 6. 交互与渲染 ===
+        window.switchCategory = function(cat) {
+            currentCategory = cat;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            const tabs = document.querySelectorAll('.tab');
+            const catMap = { 'floor': 0, 'small': 1, 'wall': 2, 'decor': 3 };
+            if (tabs[catMap[cat]]) tabs[catMap[cat]].classList.add('active');
+            renderShopItems(cat);
+        };
+        
+        window.forceStart = function() { const ls = document.getElementById('loading-screen'); if(ls) ls.style.display = 'none'; if(!scene) startGame(); }
+        window.debugAddMoney = function() { updateMoney(100); };
+        window.debugResetCat = function() { cats.forEach(c => c.resetCooldown()); updateStatusText("猫咪不再生气了"); };
+
+        let debugGizmosVisible = false;
+        let debugHelpers = [];
+        window.toggleDebugGizmos = function() {
+            debugGizmosVisible = !debugGizmosVisible;
+            
+            // 1. 清除旧的线框
+            debugHelpers.forEach(h => scene.remove(h));
+            debugHelpers = [];
+
+            if (!debugGizmosVisible) {
+                updateStatusText("调试模式: 关闭");
+                return;
+            }
+
+            // 2. 生成新的线框
+            placedFurniture.forEach(f => {
+                if (!f.userData.parentClass) return;
+                const db = f.userData.parentClass.dbItem;
+                
+                // 红色：实际模型包围盒 (BoxHelper) - 这是真实的物理边缘
+                const meshHelper = new THREE.BoxHelper(f, 0xff0000);
+                scene.add(meshHelper);
+                debugHelpers.push(meshHelper);
+
+                // 绿色：逻辑数据包围盒 (Based on DB Size)
+                if (db.size) {
+                    const geo = new THREE.BoxGeometry(db.size.x, db.size.y, db.size.z);
+                    const edges = new THREE.EdgesGeometry(geo);
+                    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
+                    
+                    line.position.copy(f.position);
+                    line.rotation.copy(f.rotation);
+                    
+                    // [修复] 只有非墙壁类家具，才需要抬高线框
+                    // 墙壁类家具 (type === 'wall') 通常原点就在中心，不需要抬高
+                    if (db.type !== 'wall' && db.fixBottom !== false) {
+                        line.position.y += db.size.y / 2;
+                    }
+
+                    scene.add(line);
+                    debugHelpers.push(line);
+                }
+            });
+            updateStatusText("调试模式: 开启 - 红:模型 绿:逻辑");
+        }
+
+        // [新增] 切换日志显示/隐藏
+        window.toggleConsole = function() {
+            const consoleDiv = document.getElementById('debug-console');
+            if (consoleDiv) {
+                // 如果当前是隐藏的，就显示；如果是显示的，就隐藏
+                if (consoleDiv.style.display === 'none' || consoleDiv.style.display === '') {
+                    consoleDiv.style.display = 'block';
+                } else {
+                    consoleDiv.style.display = 'none';
+                }
+            }
+        };
+
+        function renderShopItems(cat) {
+            const c = document.getElementById('items-scroll'); c.innerHTML = ''; 
+            let typeFilter = cat; 
+            FURNITURE_DB.filter(i => (i.type === typeFilter || (typeFilter === 'floor' && i.type === 'functional'))).forEach(item => {
+                const b = document.createElement('div'); b.className = 'item-btn'; b.dataset.price = item.price;
+                if (item.type === 'decor' && activeDecorId[item.decorType] === item.id) { b.classList.add('selected'); }
+                b.onclick = (e) => { e.stopPropagation(); if (!b.classList.contains('disabled')) { startNewPlacement(item.id); } };
+                if (item.type === 'decor') { b.onmouseenter = () => applyDecorVisuals(item); b.onmouseleave = () => restoreDecorState(item.decorType); }
+                const col = document.createElement('div'); col.className = 'color-preview'; 
+                if (item.textureFile) col.style.backgroundImage = `url(./assets/textures/${item.textureFile})`; else { const colorVal = item.color !== undefined ? item.color : 0xcccccc; col.style.background = '#' + colorVal.toString(16).padStart(6, '0'); }
+                const t = document.createElement('span'); t.innerText = item.name; const p = document.createElement('div'); p.className = 'price-tag'; p.innerText = '❤ ' + item.price;
+                b.append(col, t, p); c.appendChild(b);
+            }); 
+            refreshShopState();
+        }
+
+        window.startNewPlacement = function(id) {
+            const item = FURNITURE_DB.find(i => i.id === id);
+            if (heartScore < item.price && !activeDecorId[item.decorType]) { alert("金钱不足"); return; } 
+            if (item.type === 'decor') { handleDecorClick(item); return; }
+            deselect(); mode = 'placing_new'; currentItemData = item; currentRotation = 0; createGhost(); updateStatusText("放置: " + item.name); document.querySelectorAll('.item-btn').forEach(b => b.classList.remove('selected'));
+        }
+
+        function handleDecorClick(item) {
+            const type = item.decorType;
+            if (activeDecorId[type] === item.id) { activeDecorId[type] = null; restoreDecorState(type); updateStatusText("已恢复默认样式"); } 
+            else { if (heartScore >= item.price) { updateMoney(-item.price); activeDecorId[type] = item.id; applyDecorVisuals(item); updateStatusText("已装修: " + item.name); } else { alert("金钱不足！"); } }
+            renderShopItems('decor'); 
+        }
+
+        function createGhost() {
+            if (ghostMesh) scene.remove(ghostMesh);
+            const item = currentItemData; const modelGroup = prepareModel(item);
+            if (modelGroup) { ghostMesh = modelGroup; } else { let mat = new THREE.MeshStandardMaterial({ color: item.color, transparent: true, opacity: 0.6 }); let geo = new THREE.BoxGeometry(item.size?.x || 1, item.size?.y || 1, item.size?.z || 1); ghostMesh = new THREE.Mesh(geo, mat); }
+            ghostMesh.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.transparent = true; c.material.opacity = 0.5; } });
+            ghostMesh.position.set(0, -100, 0); if (item.type !== 'wall') ghostMesh.rotation.y = currentRotation; scene.add(ghostMesh);
+        }
+
+        function checkColl(isWall) {
+            ghostMesh.updateMatrixWorld();
+            const box = new THREE.Box3().setFromObject(ghostMesh);
+            if (currentItemData.layer === 0) { 
+                 box.min.x += 0.1; box.max.x -= 0.1;
+                 box.min.z += 0.1; box.max.z -= 0.1;
+            } else {
+                 box.expandByScalar(-0.1);
+            }
+
+            let col = false;
+            // 1. Wall structure collision
+            if (!isWall) {
+                for (let o of obstacles) {
+                    if (box.intersectsBox(new THREE.Box3().setFromObject(o))) { col = true; break; }
+                }
+            }
+
+            // 2. Furniture collision
+            if (!col) {
+                for (let f of placedFurniture) {
+                    if (mode === 'moving_old' && f === selectedObject) continue;
+
+                    // [修复] 层级判断逻辑
+                    const myL = currentItemData.layer;
+                    const otherL = f.userData.parentClass ? f.userData.parentClass.dbItem.layer : 1;
+
+                    // Layer 0 (Rugs) ignores everything and is ignored by everything
+                    if (myL === 0 || otherL === 0) continue;
+
+                    // Layer 2 vs Layer 1 collision rules (simplified: ignore vertical stacking collision for horizontal placement)
+                    if ((myL === 2 && otherL === 1) || (myL === 1 && otherL === 2)) continue;
+
+                    // Overlap property
+                    if (currentItemData.allowOverlap && f.userData.parentClass && f.userData.parentClass.dbItem.type === 'wall') continue;
+
+                    if (box.intersectsBox(new THREE.Box3().setFromObject(f))) { col = true; break; }
+                }
+            }
+            if (ghostMesh.position.y < 0 && currentItemData.layer !== 0) col = true;
+            
+            if (col) {
+                ghostMesh.traverse(c => { if (c.isMesh) c.material.color.setHex(0xff0000) });
+                canPlace = false;
+                updateStatusText("位置冲突", "invalid");
+            } else {
+                ghostMesh.traverse(c => { if (c.isMesh) c.material.color.setHex(0xffffff) });
+                canPlace = true;
+                updateStatusText("可放置", "valid");
+            }
+        }
+
+        function confirmPlace() {
+            if (mode === 'placing_new') { 
+                if (heartScore >= currentItemData.price) 
+                updateMoney(-currentItemData.price); 
+            else { alert("金钱不足!"); 
+            cancelPlace(); 
+            gameSaveManager.saveGame();
+            return; } 
+        }
+            
+            let m = ghostMesh.clone();
+            m.traverse(c => { 
+                if (c.isMesh) { 
+                    c.material.opacity = 1.0; 
+                    c.material.transparent = false; 
+                    if (!currentItemData.modelFile) c.material.color.setHex(currentItemData.color || 0xffffff); 
+                } 
+            });
+            
+            const newFurniture = new Furniture(m, currentItemData);
+            scene.add(m); 
+            placedFurniture.push(m);
+
+            // [新增] 日记埋点：购买家具
+            if (mode === 'placing_new') {
+                const typeKey = (currentItemData.type === 'floor') ? 'buy_floor' : 'buy_small';
+                
+                // [关键修复] 必须传入 id: currentItemData.id
+                // 这样 logEvent 才能去 specific_items 里查找有没有 'ChrismasTree' 的专用吐槽
+                // [修改] 调用 logEvent，给购买事件一个权重
+                diaryManager.logEvent(typeKey, {
+                    item: currentItemData.name, 
+                    id: currentItemData.id 
+                }, 60); // 购买事件权重高一点
+            }
+
+
+            if(currentItemData.light) {
+                if (currentItemData.lightType === 'point') { 
+                    const bulb = new THREE.PointLight(0xffaa00, 0.8, 5); 
+                    let lx = 0, ly = 0.3, lz = 0;
+                    if (currentItemData.lightOffset) { lx = currentItemData.lightOffset.x || 0; ly = currentItemData.lightOffset.y || 0; lz = currentItemData.lightOffset.z || 0; }
+                    bulb.position.set(lx, ly, lz); bulb.castShadow = true; m.add(bulb); 
+                } else { 
+                    const sl = new THREE.SpotLight(0xfff0dd, 5); sl.position.set(0,0,0); sl.target.position.set(0,0,5); sl.angle = Math.PI / 3; sl.penumbra = 0.5; sl.castShadow = true; m.add(sl); m.add(sl.target); 
+                }
+            }
+            
+            // [修复] 天空背景
+            if(currentItemData.light && currentItemData.type === 'wall') { 
+                 addSkyBacking(m, currentItemData.size); 
+            }
+
+            if (mode === 'placing_new' && currentItemData.layer === 1) { const savedItem = currentItemData; setTimeout(() => spawnMysteryBox(savedItem), 1000); }
+            if (mode === 'moving_old') { scene.remove(selectedObject); const i = placedFurniture.indexOf(selectedObject); if (i > -1) placedFurniture.splice(i, 1); deselect(); }
+            cancelPlace(); playBounce(m);
+
+            gameSaveManager.saveGame(); // 也要存盘
+        }
+
+        function onDown(e) {
+            if (e.target !== renderer.domElement) return;
+            startPointer.x = e.clientX; startPointer.y = e.clientY;
+            
+            if (mode === 'idle' && e.button === 0) {
+                raycaster.setFromCamera(pointer, camera);
+                
+                // 1. 优先检测猫咪
+                let catHit = null;
+                for(let cat of cats) { 
+                    const hits = raycaster.intersectObject(cat.mesh, true); 
+                    if(hits.length > 0) { catHit = cat; break; } 
+                }
+
+                if (catHit) {
+                    // 点击到猫咪，先暂时锁定视角旋转，防止长按时误触
+                    controls.enabled = false; 
+
+                    longPressTimer = setTimeout(() => {
+                        // 长按触发：开始拖拽
+                        draggingCat = catHit;
+                        draggingCat.setDragged(true); 
+                        updateStatusText("拎起猫咪");
+                    }, 500);
+                    return; 
+                }
+
+                // 2. 检测家具
+                const hits = raycaster.intersectObjects(placedFurniture, true);
+                if (hits.length > 0) {
+                    let root = hits[0].object; while (root.parent && root.parent !== scene) root = root.parent;
+                    
+                    if (root.userData.isBox) { 
+                        scene.remove(root); 
+                        const i = placedFurniture.indexOf(root); 
+                        if (i > -1) placedFurniture.splice(i, 1); 
+                        updateMoney(10); spawnHeart(root.position); updateStatusText("回收纸箱+10"); 
+                        return; 
+                    }
+                    if (root.userData.parentClass) {
+                        const didInteract = root.userData.parentClass.interact(); if (didInteract) return;
+                        if (root.userData.parentClass.isBox) { scene.remove(root); const i = placedFurniture.indexOf(root); if (i > -1) placedFurniture.splice(i, 1); updateMoney(10); spawnHeart(root.position); updateStatusText("回收纸箱+10"); return; }
+                    }
+                    longPressTimer = setTimeout(() => selectObj(root, e.clientX, e.clientY), 500);
+                }
+            }
+            if (e.button === 1 && ghostMesh && currentItemData.type !== 'wall') { e.preventDefault(); rotateItem(); return; }
+            if (e.button === 0 && (mode === 'placing_new' || mode === 'moving_old') && canPlace && ghostMesh) confirmPlace();
+        }
+
+        function onUp() { 
+            // 恢复视角控制
+            controls.enabled = true;
+
+            if (draggingCat) {
+                draggingCat.setDragged(false);
+                draggingCat = null;
+                updateStatusText("放置猫咪");
+            }
+            else if (longPressTimer) { 
+                clearTimeout(longPressTimer); 
+                longPressTimer = null; 
+                raycaster.setFromCamera(pointer, camera);
+                for(let cat of cats) { 
+                    const hits = raycaster.intersectObject(cat.mesh, true); 
+                    if(hits.length > 0) { cat.pet(); return; } 
+                }
+            } 
+        }  
+
+        function selectObj(m, x, y) { deselect(); selectedObject = m; selectionBox = new THREE.BoxHelper(selectedObject, 0xffffff); scene.add(selectionBox); const menu = document.getElementById('context-menu'); menu.style.display = 'flex'; let px = x + 10, py = y + 10; if (px + 100 > window.innerWidth) px = window.innerWidth - 110; if (py + 100 > window.innerHeight) py = window.innerHeight - 110; menu.style.left = px + 'px'; menu.style.top = py + 'px'; updateStatusText("选中: 家具"); }
+        function deselect() { selectedObject = null; if (selectionBox) { scene.remove(selectionBox); selectionBox = null; } document.getElementById('context-menu').style.display = 'none'; }
+        function cancelPlace() { if (ghostMesh) scene.remove(ghostMesh); mode = 'idle'; ghostMesh = null; currentItemData = null; updateStatusText("浏览中"); }
+        function cancelMove() { if(mode==='moving_old'){if(ghostMesh)scene.remove(ghostMesh);if(selectedObject){selectedObject.position.copy(editingObjectOriginalPos);selectedObject.quaternion.copy(editingObjectOriginalQuat);selectedObject.visible=true;}} deselect(); mode='idle'; ghostMesh=null; }
+        function showMenu(x,y) { const m=document.getElementById('context-menu'); m.style.display='flex'; let px=x+10, py=y+10; if(px+100>window.innerWidth)px=window.innerWidth-110; if(py+100>window.innerHeight)py=window.innerHeight-110; m.style.left=px+'px'; m.style.top=py+'px'; }
+        function hideContextMenu() { document.getElementById('context-menu').style.display='none'; }
+         
+        
+        
+        function startMovingOld(m) { mode = 'moving_old'; m.visible = false; editingObjectOriginalPos = m.position.clone(); editingObjectOriginalQuat = m.quaternion.clone(); currentItemData = m.userData.parentClass ? m.userData.parentClass.dbItem : FURNITURE_DB[0]; currentRotation = m.rotation.y; createGhost(); updateStatusText("正在移动..."); }
+        function deleteSelected() { if (!selectedObject) return; scene.remove(selectedObject); const i = placedFurniture.indexOf(selectedObject); if (i > -1) placedFurniture.splice(i, 1); deselect(); }
+        
+        // === 替换 onMove (增加拖拽逻辑) ===
+        function onMove(e) {
+            if (longPressTimer && !draggingCat) { 
+                // 如果移动距离过大，取消长按判定（防止误触）
+                if (Math.hypot(e.clientX - startPointer.x, e.clientY - startPointer.y) > 5) { 
+                    clearTimeout(longPressTimer); longPressTimer = null; 
+                } 
+            }
+            pointer.x = (e.clientX / window.innerWidth) * 2 - 1; pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            
+            // [新增] 猫咪拖拽逻辑
+            if (draggingCat) {
+                raycaster.setFromCamera(pointer, camera);
+                // 射线检测：地板 + 所有家具 (让猫能被放在桌子/沙发上)
+                const checkList = [floorPlane, ...placedFurniture];
+                const hits = raycaster.intersectObjects(checkList, true);
+                
+                if (hits.length > 0) {
+                    const hit = hits[0];
+                    // 获取点击点的高度
+                    let targetY = hit.point.y;
+                    
+                    // 如果是放在家具上，稍微处理一下，避免穿模太深
+                    // 这里简单处理：直接吸附到射线击中点
+                    draggingCat.mesh.position.set(hit.point.x, targetY, hit.point.z);
+                }
+                return;
+            }
+
+            // ... 原有的家具移动逻辑 ...
+            if ((mode === 'placing_new' || mode === 'moving_old') && ghostMesh) {
+                raycaster.setFromCamera(pointer, camera); 
+                if (currentItemData.type === 'wall') {
+                    const hits = raycaster.intersectObjects(obstacles);
+                    if (hits.length > 0) {
+                        const h = hits[0]; const n = h.face.normal;
+                        if (Math.abs(n.y) > 0.5) return; 
+                        const offset = currentItemData.size.z / 2 + 0.01;
+                        const pos = h.point.clone().add(n.clone().multiplyScalar(offset));
+                        if (Math.abs(n.x) > 0.5) { pos.y = Math.round(pos.y / 0.5) * 0.5; pos.z = Math.round(pos.z / 0.5) * 0.5; } 
+                        else { pos.x = Math.round(pos.x / 0.5) * 0.5; pos.y = Math.round(pos.y / 0.5) * 0.5; }
+                        const hh = currentItemData.size.y / 2; if (pos.y < hh) pos.y = hh; if (pos.y + hh > 3) pos.y = 3 - hh;
+                        ghostMesh.position.copy(pos); ghostMesh.lookAt(pos.clone().add(n)); checkColl(true);
+                    }
+                    return;
+                }
+                let onTable = false;
+                if (currentItemData.layer === 2) {
+                    const surfaceMeshes = placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.dbItem && f.userData.parentClass.dbItem.isSurface);
+                    const hits = raycaster.intersectObjects(surfaceMeshes, true);
+                    if (hits.length > 0) {
+                        const hit = hits[0]; let targetY = hit.point.y;
+                        if (hit.object.parent && hit.object.parent.userData.parentClass && hit.object.parent.userData.parentClass.dbItem.surfaceHeight) {
+                            targetY = hit.object.parent.position.y + hit.object.parent.userData.parentClass.dbItem.surfaceHeight;
+                        }
+                        if (currentItemData.yFix) targetY += currentItemData.yFix;
+                        ghostMesh.position.set(hit.point.x, targetY, hit.point.z); ghostMesh.rotation.set(0, currentRotation, 0); checkColl(false); onTable = true;
+                    }
+                }
+                if (!onTable) {
+                    const hits = raycaster.intersectObject(floorPlane);
+                    if (hits.length > 0) {
+                        const p = hits[0].point; let targetY = 0; if (currentItemData.id.includes('rug')) targetY = 0.01;
+                        ghostMesh.position.set(Math.round(p.x / 0.5) * 0.5, targetY, Math.round(p.z / 0.5) * 0.5);
+                        ghostMesh.rotation.set(0, currentRotation, 0); checkColl(false);
+                    }
+                }
+            }
+        }
+
+        function rotateItem() { currentRotation += Math.PI / 2; if (ghostMesh) { ghostMesh.rotation.y = currentRotation; checkColl(false); } }
+        function playBounce(m) { let f=0; const baseScale = m.userData.parentClass.dbItem.modelScale || 1; function a(){ if(f<20){const k=f/20; const s=0.1+(0.9)*(Math.sin(k*Math.PI*1.5)*0.2+k); m.scale.set(baseScale*s, baseScale*s, baseScale*s); f++; requestAnimationFrame(a); }else m.scale.set(baseScale, baseScale, baseScale); } a(); }
+        function onWindowResize() { 
+            const aspect = window.innerWidth / window.innerHeight; 
+            const d = 12; 
+            camera.left = -d * aspect; camera.right = d * aspect; camera.top = d; camera.bottom = -d; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // [新增] 窗口变化时更新后期处理尺寸
+            if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+
+        function updateCameraMovement(dt) {
+            if (!(moveKeys.w || moveKeys.a || moveKeys.s || moveKeys.d)) return;
+            const moveSpeed = 10.0 * dt;
+            const displacement = new THREE.Vector3();
+            const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
+            const right = new THREE.Vector3(); right.crossVectors(forward, camera.up).normalize();
+            if (moveKeys.w) displacement.add(forward.multiplyScalar(moveSpeed));
+            if (moveKeys.s) displacement.sub(forward.multiplyScalar(moveSpeed));
+            if (moveKeys.d) displacement.add(right.multiplyScalar(moveSpeed));
+            if (moveKeys.a) displacement.sub(right.multiplyScalar(moveSpeed));
+            camera.position.add(displacement); controls.target.add(displacement);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = gameClock.getDelta(); 
+            updateCameraMovement(dt);
+            controls.update();
+            updateEnvironment(dt);
+            cats.forEach(c => c.update(dt)); 
+            if(selectionBox) selectionBox.update();
+            
+            // [修改] 使用 composer 替代 renderer
+            // renderer.render(scene, camera);  <-- 删掉或注释这行
+            if (composer) composer.render();    // <-- 改用这行
+            else renderer.render(scene, camera); // 降级兼容
+        }
+
+        function startGame() {
+            try {
+                logToScreen("Initializing Renderer & Scene...");
+                setDomText('heart-text-display', heartScore);
+                window.switchCategory('floor'); 
+                
+                renderer = new THREE.WebGLRenderer({ 
+                    antialias: false, // 关闭自带抗锯齿，我们将使用后期处理(SMAA)来抗锯齿，性能更好且兼容AO
+                    powerPreference: "high-performance",
+                    stencil: false,
+                    depth: true
+                }); 
+                renderer.setSize(window.innerWidth, window.innerHeight); 
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 限制像素比，防止高分屏卡顿
+
+                renderer.shadowMap.enabled = true; 
+                renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+
+                // 3. 色彩空间与色调映射 (关键！)
+                renderer.outputColorSpace = THREE.SRGBColorSpace; // 确保纹理和光照颜色准确
+                renderer.toneMapping = THREE.ACESFilmicToneMapping; // 电影级色调
+                renderer.toneMappingExposure = 1.2; // 曝光度，配合光照强度调整
+
+                document.body.appendChild(renderer.domElement);
+
+                scene = new THREE.Scene(); scene.background = new THREE.Color(0xe0f7fa);
+                const aspect=window.innerWidth/window.innerHeight; const d=12; camera = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 1, 1000); camera.position.set(20, 20, 20); camera.lookAt(0,0,0);
+                controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxPolarAngle = Math.PI/2.1;
+
+                // === [新版 UI 适配] 绑定时间滑块与重置按钮 ===
+                const hudSlider = document.getElementById('time-slider-hud'); // 新的ID
+                const timeResetBtn = document.getElementById('time-reset-btn'); // 新的ID
+
+                // 1. 滑块拖动：切换到手动模式
+                if (hudSlider) {
+                    hudSlider.addEventListener('input', (e) => {
+                        isTimeAuto = false; 
+                        visualHour = parseFloat(e.target.value);
+                        // 变灰，表示离开了自动模式
+                        if(timeResetBtn) timeResetBtn.style.color = '#999'; 
+                    });
+                }
+
+                // 2. 重置按钮点击：恢复自动模式
+                if (timeResetBtn) {
+                    timeResetBtn.onclick = () => {
+                        isTimeAuto = true;
+                        // 变绿，表示正在同步
+                        timeResetBtn.style.color = '#2ecc71'; 
+                        updateStatusText("时间已同步现实");
+                        
+                        // 立即同步滑块位置，防止视觉跳变
+                        const now = new Date();
+                        const vH = now.getHours() + now.getMinutes() / 60.0;
+                        if(hudSlider) hudSlider.value = vH;
+                    };
+                }
+
+                // [新增] 日志调试函数的空壳 (防止报错)
+                //window.debugGenDiary = function() { console.log("待实现: 生成日记"); updateStatusText("Debug: 生成日记 (待实现)"); };
+                //window.debugClearDiary = function() { console.log("待实现: 清空日记"); updateStatusText("Debug: 清空日记 (待实现)"); };
+
+
+                window.addEventListener('keydown', (e) => {
+                    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+                    const key = e.key.toLowerCase();
+                    if (key === 'r' && ghostMesh && currentItemData.type !== 'wall') { rotateItem(); }
+                    switch (key) { case 'w': moveKeys.w = true; break; case 'a': moveKeys.a = true; break; case 's': moveKeys.s = true; break; case 'd': moveKeys.d = true; break; }
+                });
+                window.addEventListener('keyup', (e) => {
+                    const key = e.key.toLowerCase();
+                    switch (key) { case 'w': moveKeys.w = false; break; case 'a': moveKeys.a = false; break; case 's': moveKeys.s = false; break; case 'd': moveKeys.d = false; break; }
+                });
+                
+                hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 2.0); 
+                scene.add(hemiLight);
+
+                const al = new THREE.AmbientLight(0xffffff, 0.5); 
+                scene.add(al);
+                
+                sunLight = new THREE.DirectionalLight(0xffdfba, 3.0); // 强度提高
+                sunLight.position.set(15,25,10); 
+                sunLight.castShadow=true; 
+                
+                // 优化阴影参数
+                sunLight.shadow.mapSize.width=2048; 
+                sunLight.shadow.mapSize.height=2048; 
+                sunLight.shadow.bias = -0.0001; 
+                sunLight.shadow.normalBias = 0.02; 
+                sunLight.shadow.camera.left=-20; sunLight.shadow.camera.right=20; sunLight.shadow.camera.top=20; sunLight.shadow.camera.bottom=-20; 
+                scene.add(sunLight);
+                
+                celestialGroup = new THREE.Group(); scene.add(celestialGroup);
+                sunMesh = new THREE.Mesh(new THREE.SphereGeometry(2,16,16), new THREE.MeshBasicMaterial({color:0xffff00})); celestialGroup.add(sunMesh);
+                moonMesh = new THREE.Mesh(new THREE.SphereGeometry(1.5,16,16), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x222222})); celestialGroup.add(moonMesh);
+                sunMesh.visible = false; moonMesh.visible = false;
+                
+                raycaster = new THREE.Raycaster(); pointer = new THREE.Vector2();
+                const fg=new THREE.PlaneGeometry(12,12); const fm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.floor.color}); floorPlane=new THREE.Mesh(fg, fm); floorPlane.rotation.x=-Math.PI/2; floorPlane.receiveShadow=true; scene.add(floorPlane);
+                //显示网格
+                //const gh=new THREE.GridHelper(12,24,0xffffff,0xffffff); gh.position.y=0.01; gh.material.opacity=0.2; gh.material.transparent=true; scene.add(gh);
+                
+                const wm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.wall.color});
+                const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3,0.5), wm); w1.position.set(0,1.5,-5.25); w1.receiveShadow=true; w1.castShadow=true; scene.add(w1); obstacles.push(w1);
+                const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3,10), wm); w2.position.set(-5.25,1.5,0); w2.receiveShadow=true; w2.castShadow=true; scene.add(w2); obstacles.push(w2);
+                wallGroup = [w1, w2];
+                
+                logToScreen("Spawning Cat...");
+                
+                // [修复] 必须先定义 newCat 变量，下面恢复存档时才能用
+                const newCat = new Cat(scene, 0xffa502); 
+                cats.push(newCat);
+
+                // === [关键修改] 读取存档并恢复场景 ===
+                const savedData = gameSaveManager.loadGame();
+
+                if (savedData) {
+                    updateStatusText("检测到存档，正在恢复...");
+                    
+                    // 1. 恢复猫咪属性 (现在 newCat 存在了，就不会报错了)
+                    if (savedData.catStats) {
+                        newCat.stats.hunger = savedData.catStats.hunger;
+                        newCat.stats.toilet = savedData.catStats.toilet;
+                    }
+
+                    // 2. 恢复家具
+                    if (savedData.furniture && savedData.furniture.length > 0) {
+                        savedData.furniture.forEach(fData => {
+                            // 查找数据库配置
+                            // 注意：如果是 mystery_box，它不在 DB 里，需要特殊处理，或者我们在 DB 里加上 mystery_box 的定义
+                            // 你的代码之前写了 const boxDbItem = { id: 'mystery_box'... }，这里我们简单处理，暂不恢复箱子，或者只恢复普通家具
+                            // 为了简化，我们暂时只恢复 DB 里有的家具。箱子因为是随机生成的，丢了就丢了（或者你需要把 mystery_box 加入 FURNITURE_DB）
+                            
+                            let itemConfig = FURNITURE_DB.find(i => i.id === fData.id);
+                            
+                            // 特殊处理：如果是神秘箱子
+                            if (fData.id === 'mystery_box') {
+                                // 重新生成箱子比较麻烦，这里暂时跳过箱子的恢复，避免复杂
+                                // 如果非常需要恢复箱子，需要把 spawnMysteryBox 逻辑拆分
+                                return; 
+                            }
+
+                            if (itemConfig) {
+                                const modelGroup = prepareModel(itemConfig);
+                                if (modelGroup) {
+                                    modelGroup.position.set(fData.pos.x, fData.pos.y, fData.pos.z);
+                                    modelGroup.rotation.y = fData.rot.y;
+                                    
+                                    // 实例化类
+                                    const furnClass = new Furniture(modelGroup, itemConfig);
+                                    
+                                    // 恢复功能状态 (满/空)
+                                    if (fData.funcState && furnClass.functionalState) {
+                                        furnClass.functionalState = fData.funcState;
+                                        furnClass.updateVisuals();
+                                    }
+                                    
+                                    // 添加光照逻辑 (复制 confirmPlace 里的光照代码)
+                                    if(itemConfig.light) {
+                                        if (itemConfig.lightType === 'point') { 
+                                            const bulb = new THREE.PointLight(0xffaa00, 0.8, 5); 
+                                            let lx = 0, ly = 0.3, lz = 0;
+                                            if (itemConfig.lightOffset) { lx = itemConfig.lightOffset.x || 0; ly = itemConfig.lightOffset.y || 0; lz = itemConfig.lightOffset.z || 0; }
+                                            bulb.position.set(lx, ly, lz); bulb.castShadow = true; modelGroup.add(bulb); 
+                                        } else { 
+                                            const sl = new THREE.SpotLight(0xfff0dd, 5); sl.position.set(0,0,0); sl.target.position.set(0,0,5); sl.angle = Math.PI / 3; sl.penumbra = 0.5; sl.castShadow = true; modelGroup.add(sl); modelGroup.add(sl.target); 
+                                        }
+                                        if(itemConfig.type === 'wall') addSkyBacking(modelGroup, itemConfig.size);
+                                    }
+
+                                    scene.add(modelGroup);
+                                    placedFurniture.push(modelGroup);
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    updateStatusText("新游戏，无存档");
+                    // 只有在新游戏时，才需要特殊的初始化（如果以后有引导流程的话）
+                }
+
+
+
+
+                window.addEventListener('resize', onWindowResize); window.addEventListener('pointermove', onMove); window.addEventListener('pointerdown', onDown); window.addEventListener('pointerup', onUp);
+                window.addEventListener('contextmenu', (e)=>{ e.preventDefault(); if(mode==='placing_new') cancelPlace(); else if(mode==='moving_old') cancelMove(); else deselect(); });
+                
+                document.getElementById('btn-move').onclick=()=>{if(selectedObject)startMovingOld(selectedObject);hideContextMenu();}
+                document.getElementById('btn-delete').onclick=()=>{if(selectedObject)deleteSelected();hideContextMenu();}
+                document.getElementById('btn-cancel').onclick=()=>{deselect();hideContextMenu();}
+
+                // === [新增] 在 startGame 底部调用后期处理初始化 ===
+                initPostProcessing();
+
+                logToScreen("Game Loop Starting...");
+                animate();
+            } catch(e) {
+                console.error(e);
+                logToScreen("STARTGAME CRASH: " + e.message, 'error');
+            }
+        }
+
+        // === [新增] 全局日记实例与交互函数 ===
+        const diaryManager = new DiaryManager();
+
+        // [新增] 关键修复：把实例挂载到 window，让 HTML 里的 onclick 能找到它
+        window.diaryManager = diaryManager; 
+
+        // [修改] window.toggleDiary: 打开时触发 flushPendingEvents
+        window.toggleDiary = function() {
+            const modal = document.getElementById('diary-modal');
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                
+                // [修改] 打开日记前，先处理所有待写入的事件
+                diaryManager.flushPendingEvents(); 
+
+                diaryManager.viewingDate = new Date(); 
+                diaryManager.renderPage();
+                
+                diaryManager.updateUIHint(false);
+            } else {
+                modal.classList.add('hidden');
+            }
+        };
+
+        // [修改] debugGenDiary: 直接调用 logEvent
+        window.debugGenDiary = function() {
+            const msgs = [
+                "两脚兽今天一直在屏幕前发呆，真让人担心。",
+                "刚刚那只蚊子飞得好慢，但我懒得动。",
+                "想吃高级罐头，现在的猫粮口感一般。",
+                "在沙发底下发现了一个丢失已久的瓶盖！"
+            ];
+            const randomMsg = msgs[Math.floor(Math.random() * msgs.length)];
+            
+            // [修改] 调用 logEvent，会进入 pendingEvents
+            diaryManager.logEvent('debug_event', { item: randomMsg }, 50); // 赋予一个中等权重
+            updateStatusText("Debug: 已生成一条测试事件");
+        };
+        // debugClearDiary 保持不变
+
+        window.debugClearDiary = function() {
+            diaryManager.clearAll();
+            updateStatusText("日记已清空");
+        };
+
+        // [新增] UI 交互函数
+        window.toggleTimePopover = function() {
+            const pop = document.getElementById('time-popover');
+            if (pop) pop.classList.toggle('hidden');
+        };
+
+        window.toggleShop = function() {
+            const shop = document.getElementById('shop-panel-container');
+            if (shop.classList.contains('hidden-bottom')) {
+                shop.classList.remove('hidden-bottom'); // 滑上来
+            } else {
+                shop.classList.add('hidden-bottom'); // 滑下去
+            }
+        };
+
+        function init() { try { loadAssets(() => { updateStatusText("资源加载完毕"); const ls = document.getElementById('loading-screen'); if(ls) ls.style.display = 'none'; if(!scene) startGame(); }); } catch(e) { console.error(e); alert("Init Error: " + e.message); } }
+        
+        init();
+    </script>
+</body>
+</html>

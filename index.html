@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap" rel="stylesheet">
+    <title>猫咪的家 - V91 细节精修版</title>
+    <!-- 外部CSS样式表 -->
+    <link rel="stylesheet" href="./styles/main.css">
+    <!-- 内联样式已迁移到 styles/main.css -->
+    <script>
+        function logToScreen(msg, type = 'info') 
+        { 
+            const consoleDiv = document.getElementById('debug-console'); 
+            if (consoleDiv) { 
+                //consoleDiv.style.display = 'block'; 
+                const line = document.createElement('div'); 
+                line.textContent = `> ${msg}`; 
+                if (type === 'error') line.className = 'log-error'; 
+                else if (type === 'warn') line.className = 'log-warn'; consoleDiv.appendChild(line); consoleDiv.scrollTop = consoleDiv.scrollHeight; } console.log(msg); }
+        window.onerror = function(msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); document.getElementById('force-start-btn').style.display = 'block'; return false; };
+    </script>
+</head>
+<body>
+
+    <div id="debug-console">V91 系统日志...</div>
+
+    <div id="loading-screen">
+        <div id="loading-text">资源加载中...</div>
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <button id="force-start-btn" onclick="window.forceStart()">⚠️ 强制进入游戏</button>
+    </div>
+
+    <div id="confirm-dialog">
+        <h3 id="dialog-title">补充猫粮?</h3>
+        <p id="dialog-msg">需要消耗 10 爱心</p>
+        <div class="dialog-btns">
+		<button class="dialog-btn btn-no" onclick="closeDialog()">取消</button>
+		<button class="dialog-btn btn-yes" id="btn-confirm-yes">确定</button>
+		</div>
+    </div>
+
+
+
+    <div id="tutorial">
+        <strong>V91 细节精修版</strong><br>
+        1. 修复猫咪睡觉"踢腿"/来回走<br>
+        2. 吃饭对准/站猫砂盆上<br>
+        3. 状态栏常驻左下角<br>
+        <div style="margin-top:5px; border-top:1px solid #ccc; padding-top:5px;"><span id="status-text">初始化...</span></div>
+    </div>
+
+    <!-- ================== 新版 HUD ================== -->
+    
+    <!-- 1. 左上角：时间与状态 -->
+    <div id="hud-top-left">
+        <!-- 时间组件 -->
+        <div id="time-widget">
+            <div id="time-bg">
+                <!-- 显示时间 -->
+                <span id="time-text-display">12:00</span>
+                <span id="time-ampm">PM</span>
+            </div>
+            <!-- 天气/光影控制入口 -->
+            <div id="weather-icon-container" onclick="toggleTimePopover()">
+                <img id="weather-icon-img" src="./assets/ui/icon_sun.png">
+            </div>
+            <!-- 隐藏的滑块控制条 (Popover) -->
+            <div id="time-popover" class="hidden">
+                <input type="range" id="time-slider-hud" min="0" max="23.99" step="0.01">
+                <button id="time-reset-btn" title="重置时间">↻</button>
+            </div>
+        </div>
+
+        <!-- 爱心组件 -->
+        <div id="heart-widget">
+            <!-- 图标放在背景外面，方便绝对定位 -->
+            <img src="./assets/ui/icon_heart.png" id="heart-icon-img">
+            <div id="heart-bg">
+                <span id="heart-text-display">500</span>
+            </div>
+        </div>
+
+<!-- 生理状态组件 -->
+        <div id="status-widget-group">
+            <!-- 饱食度 -->
+            <div class="status-circle">
+                <!-- 1. 底层 Frame -->
+                <img src="./assets/ui/hunger_icon_frame.png" class="status-frame">
+                
+                <!-- 2. 中间 Mask (负责切圆角) -->
+                <div class="liquid-mask">
+                    <!-- [新增] 水位容器 (负责控制高度) -->
+                    <div class="liquid-level" id="level-hunger">
+                        <!-- 液体纹理 (高度固定，沉底) -->
+                        <img src="./assets/ui/hunger_icon_fill.png" class="liquid-texture">
+                    </div>
+                </div>
+                
+                <!-- 3. 顶层 Icon -->
+                <img src="./assets/ui/hunger_icon.png" class="status-icon-fg">
+            </div>
+
+            <!-- 便便值 -->
+            <div class="status-circle">
+                <img src="./assets/ui/toilet_icon_frame.png" class="status-frame">
+                <div class="liquid-mask">
+                    <div class="liquid-level" id="level-toilet">
+                        <img src="./assets/ui/toilet_icon_fill.png" class="liquid-texture">
+                    </div>
+                </div>
+                <img src="./assets/ui/toilet_icon.png" class="status-icon-fg">
+            </div>
+        </div>
+
+    </div>
+
+    <!-- [新增] 右上角 Debug 工具栏 HTML -->
+<div id="debug-panel">
+    <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
+    <button class="debug-btn" onclick="debugResetCat()">重置猫</button>
+    <button class="debug-btn" onclick="toggleDebugGizmos()">线框</button>
+    <button class="debug-btn" onclick="toggleConsole()">📜 日志</button>
+    <button class="debug-btn" onclick="window.debugGenDiary()">📝 生成</button>
+    <button class="debug-btn" onclick="window.debugClearDiary()">🗑️ 清空</button>
+        <!-- [新增] 阴影开关按钮 -->
+    <button class="debug-btn" onclick="window.toggleShadows()">🌑 阴影</button>
+    <button class="debug-btn" onclick="window.toggleWeather()">🌤️ 天气</button>
+</div>
+
+    <!-- 2. 底部：功能入口 -->
+    <div id="hud-bottom-bar">
+        <div class="hud-btn-container" onclick="toggleDiary()">
+            <img src="./assets/ui/btn_diary.png" class="hud-main-btn">
+            <div id="diary-red-dot-hud"></div>
+        </div>
+        <div class="hud-btn-container" onclick="toggleShop()">
+            <img src="./assets/ui/btn_shop.png" class="hud-main-btn">
+        </div>
+    </div>
+
+    <!-- 3. 商店面板 (修改原有结构，增加关闭按钮) -->
+<!-- 3. 商店面板 (软木板风格) -->
+    <div id="shop-panel-container" class="hidden-bottom">
+        
+        <!-- 背景板上的标题牌 -->
+        <img src="./assets/ui/shop_title_sign.png" id="shop-title-img">
+        
+        <!-- 关闭按钮 -->
+        <button id="shop-close-btn" onclick="toggleShop()"></button>
+
+        <!-- 页签栏 (图标化) -->
+        <div id="shop-tabs">
+            <!-- 家具 -->
+            <div class="shop-tab active" onclick="switchCategory('floor')">
+                <img src="./assets/ui/tab_bg_active.png" class="tab-bg">
+                <img src="./assets/ui/tab_furniture.png" class="tab-icon">
+            </div>
+            <!-- 小物 -->
+            <div class="shop-tab" onclick="switchCategory('small')">
+                <img src="./assets/ui/tab_bg_active.png" class="tab-bg">
+                <img src="./assets/ui/tab_small.png" class="tab-icon">
+            </div>
+            <!-- 墙壁 -->
+            <div class="shop-tab" onclick="switchCategory('wall')">
+                <img src="./assets/ui/tab_bg_active.png" class="tab-bg">
+                <img src="./assets/ui/tab_wall.png" class="tab-icon">
+            </div>
+            <!-- 装修 -->
+            <div class="shop-tab" onclick="switchCategory('decor')">
+                <img src="./assets/ui/tab_bg_active.png" class="tab-bg">
+                <img src="./assets/ui/tab_decor.png" class="tab-icon">
+            </div>
+        </div>
+
+        <!-- 商品列表滚动区 -->
+        <div id="items-scroll">
+            <!-- JS 动态填充 -->
+        </div>
+        
+        <!-- 2. 自定义滚动条组件 -->
+        <div id="custom-scrollbar">
+            <div id="custom-track"></div> <!-- 绳子 -->
+            <div id="custom-thumb"></div> <!-- 猫头 -->
+        </div>
+    </div>
+
+
+
+
+    <div id="context-menu"><div class="context-btn" id="btn-move">移动位置</div><div class="context-btn btn-delete" id="btn-delete">删除家具</div><div class="context-btn" id="btn-cancel">取消选中</div></div>
+    <div id="cat-bubble" class="bubble hidden"><span id="bubble-icon">🐟</span></div>
+    
+    <!-- 常驻状态面板 -->
+
+
+<!-- 日记本弹窗 (模态框) -->
+    <div id="diary-modal" class="hidden">
+        <div id="diary-book-container">
+            <!-- 关闭按钮 -->
+            <button id="diary-close-btn" onclick="toggleDiary()"></button>
+            
+            <!-- 日记书本背景 -->
+            <img src="./assets/ui/diary_book_bg.png" id="diary-bg-img">
+
+            <!-- 左页内容 -->
+            <div id="diary-left-page">
+                <!-- 拍立得照片框 -->
+                <div id="polaroid-frame">
+                    <img src="./assets/ui/diary_photo_placeholder_Frame.png" class="polaroid-bg">
+                    <img src="./assets/ui/diary_photo_placeholder_Chrismas.png" class="polaroid-photo">
+                    <img src="./assets/ui/diary_tape.png" class="polaroid-tape">
+                    <span id="diary-photo-date" class="polaroid-text">Oct 24</span>
+                    <span id="diary-photo-weather" class="polaroid-text">天气晴朗，适合睡觉</span>
+                </div>
+                <!-- 装饰贴纸 -->
+                <img src="./assets/ui/diary_deco_fish.png" class="diary-deco-fish-left">
+            </div>
+
+            <!-- 右页内容 -->
+            <div id="diary-right-page">
+                <!-- 日期标题 (从原来的h2移过来) -->
+                <h3 id="diary-date-title" class="page-date-title">Oct 24</h3>
+                <!-- 心情/关键词 (从原来的div移过来) -->
+                <div id="diary-meta" class="page-meta">
+                    <span id="diary-weather">🌤️ 天气不错</span> | 
+                    <span id="diary-mood">😾 心情一般</span>
+                </div>
+                
+                <!-- 日记条目容器 -->
+                <div id="diary-entries-scroll">
+                    <!-- JS 会在这里填充日记条目 -->
+                    <div class="entry empty-tip">今天还没有日记...</div>
+                </div>
+                <!-- 装饰贴纸 -->
+                <img src="./assets/ui/diary_deco_fish.png" class="diary-deco-fish-right">
+                <img src="./assets/ui/diary_deco_paw.png" class="diary-deco-paw">
+            </div>
+
+            <!-- 底部导航按钮 -->
+            <div id="diary-nav-buttons">
+                <button id="btn-diary-prev" onclick="diaryManager.changePage(-1)">
+                    <img src="./assets/ui/btn_diary_prev.png">
+                </button>
+                <button id="btn-diary-next" onclick="diaryManager.changePage(1)">
+                    <img src="./assets/ui/btn_diary_next.png">
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+
+
+    <script type="importmap">
+        { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }
+    </script>
+
+    <!-- 主要JS已迁移到 scripts/main.js -->
+    <script type="module" src="./scripts/main.js"></script>
+    <!-- <script type="module" src="./scripts/main.new.js"></script> -->
+</body>
+</html>

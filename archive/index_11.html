@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猫咪的家 - 阶段12: 终极防崩溃版</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #333; font-family: 'Microsoft YaHei', sans-serif; }
+        canvas { display: block; outline: none; }
+        
+        #loading-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #f0f0f0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s;}
+        #loading-text { font-size: 20px; color: #555; margin-bottom: 10px; }
+        #progress-bar { width: 200px; height: 5px; background: #ddd; }
+        #progress-fill { width: 0%; height: 100%; background: #ffaa00; transition: width 0.2s; }
+
+        #shop-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 700px; background: rgba(255, 255, 255, 0.98); border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; user-select: none; z-index: 10; }
+        #tabs { display: flex; background: #f0f0f0; border-bottom: 1px solid #ddd; }
+        .tab { flex: 1; text-align: center; padding: 10px 0; cursor: pointer; font-size: 14px; color: #666; }
+        .tab.active { background: #fff; color: #333; font-weight: bold; border-bottom: 3px solid #ffaa00; }
+        #items-scroll { display: flex; gap: 12px; padding: 15px; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+        .item-btn { flex: 0 0 auto; width: 80px; height: 85px; border: 2px solid #eee; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; background: #fff; color: #333; position: relative; }
+        .item-btn.selected { border-color: #ffaa00; background: #fff8e1; }
+        .item-btn.disabled { filter: grayscale(100%); opacity: 0.6; cursor: not-allowed; }
+        .color-preview { width: 24px; height: 24px; border-radius: 50%; margin-bottom: 5px; border: 1px solid rgba(0,0,0,0.1); }
+        .price-tag { margin-top: 4px; font-size: 11px; color: #e74c3c; font-weight: bold; background: #fff0f0; padding: 2px 6px; border-radius: 8px; }
+        
+        #heart-panel { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.95); padding: 8px 15px; border-radius: 20px; font-size: 18px; color: #e74c3c; font-weight: bold; z-index: 20; display:flex; gap:10px;}
+        #debug-btn { background: #e74c3c; color: white; border: none; padding: 4px 8px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+        #tutorial { position: absolute; top: 20px; left: 20px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; pointer-events: none; z-index: 5; }
+        #context-menu { position: absolute; display: none; background: white; padding: 8px; border-radius: 8px; z-index: 100; flex-direction: column; gap: 5px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .context-btn { padding: 8px 16px; border: 1px solid #eee; background: #f9f9f9; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .btn-delete { color: red; background: #fff0f0; }
+        
+        .status-valid { color: green; font-weight: bold; }
+        .status-invalid { color: red; font-weight: bold; }
+        .heart-float { position: absolute; color: #e74c3c; font-weight: bold; font-size: 20px; pointer-events: none; animation: floatUp 1.5s ease-out forwards; z-index: 30; }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-50px) scale(1.5); opacity: 0; } }
+        .emote-bubble { position: absolute; font-size: 24px; pointer-events: none; animation: popUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 25; }
+        @keyframes popUp { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <div id="loading-text">资源加载中...</div>
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+    </div>
+
+    <div id="heart-panel">
+        ❤️ <span id="heart-count">500</span>
+        <button id="debug-btn" onclick="debugAddMoney()">+100</button>
+    </div>
+
+    <div id="tutorial">
+        <strong>V12 终极修复</strong><br>
+        1. 兼容无动画模型 (自动滑行)<br>
+        2. 自动修正杯子/台灯高度<br>
+        3. 请使用 Quaternius 猫咪模型以获得最佳体验<br>
+        <div style="margin-top:5px; border-top:1px solid #ccc; padding-top:5px;">
+            <span id="status-text">就绪</span>
+        </div>
+    </div>
+
+    <div id="context-menu">
+        <div class="context-btn" id="btn-move">移动位置</div>
+        <div class="context-btn btn-delete" id="btn-delete">删除家具</div>
+        <div class="context-btn" id="btn-cancel">取消选中</div>
+    </div>
+
+    <div id="shop-panel">
+        <div id="tabs">
+            <div class="tab active" onclick="switchCategory('floor')">家具</div>
+            <div class="tab" onclick="switchCategory('small')">小物</div>
+            <div class="tab" onclick="switchCategory('wall')">墙壁</div>
+        </div>
+        <div id="items-scroll"></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://esm.sh/three@0.160.0",
+                "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- 猫咪配置 (如果猫太大或太小，改这里) ---
+        const CAT_CONFIG = {
+            scale: 0.5,      // Quaternius 的猫通常 0.5 比较合适
+            yOffset: 0       // 地面高度修正
+        };
+
+        let scene, camera, renderer, controls;
+        let raycaster, pointer, floorPlane;
+        const loadedModels = {}; 
+        const loader = new GLTFLoader();
+        let mode = 'idle', ghostMesh = null, currentItemData = null, currentRotation = 0, canPlace = false;
+        let selectedObject = null, selectionBox = null, editingObjectOriginalPos = null, editingObjectOriginalQuat = null;
+        let longPressTimer = null, startPointer = new THREE.Vector2();
+        const obstacles = [], placedFurniture = [], cats = []; 
+        let heartScore = 500; 
+
+        // --- 数据库 ---
+        // fixBottom: true  表示强制计算模型底部并对齐到放置点（修复杯子卡一半的问题）
+        const FURNITURE_DB = [
+            // Layer 0: 地毯
+            { id: 'rug',      type: 'floor', layer: 0, name: '圆地毯', price: 10,  color: 0x3498db, size: {x:2, y:0.05, z:2}, modelFile: 'rug.glb', modelScale: 1.5 },
+            // Layer 1: 家具
+            { id: 'bed',      type: 'floor', layer: 1, name: '猫窝',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:1}, modelFile: 'bed.glb', modelScale: 1.0 },
+            { id: 'sofa',     type: 'floor', layer: 1, name: '大沙发', price: 150, color: 0xe74c3c, size: {x:3, y:1, z:1},   modelFile: 'sofa.glb', modelScale: 1.0 },
+            { id: 'cat_tree', type: 'floor', layer: 1, name: '猫爬架', price: 100, color: 0x8e44ad, size: {x:1, y:2, z:1},   modelFile: 'cat_tree.glb', modelScale: 1.0 },
+            { id: 'table',    type: 'floor', layer: 1, isSurface: true, name: '木桌', price: 60,  color: 0x8d6e63, size: {x:1.5, y:0.8, z:1.5}, modelFile: 'table.glb', modelScale: 1.0 },
+            // Layer 2: 小物 (加了 fixBottom: true)
+            { id: 'mug',      type: 'small', layer: 2, name: '马克杯', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'mug.glb', modelScale: 1.0, fixBottom: true },
+            { id: 'lamp',     type: 'small', layer: 2, name: '台灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, modelFile: 'lamp.glb', modelScale: 1.0, fixBottom: true },
+            // 墙壁
+            { id: 'plant',    type: 'wall',  layer: 1, name: '壁挂藤', price: 20,  color: 0x2ecc71, size: {x:0.5, y:1, z:0.2}, modelFile: 'plant.glb', modelScale: 1.0 },
+            { id: 'painting', type: 'wall',  layer: 1, name: '风景画', price: 50,  color: 0xFFD700, size: {x:1, y:1, z:0.1}, modelFile: 'painting.glb', modelScale: 1.0 },
+            { id: 'window',   type: 'wall',  layer: 1, name: '落地窗', price: 120, color: 0x87CEEB, size: {x:1.5, y:2, z:0.2}, light: true, modelFile: 'window_large.glb', modelScale: 1.0 }
+        ];
+
+        window.switchCategory = function(cat) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            const tabs = document.querySelectorAll('.tab');
+            if(cat==='floor') tabs[0].classList.add('active'); else if(cat==='small') tabs[1].classList.add('active'); else tabs[2].classList.add('active');
+            renderShopItems(cat);
+        };
+
+        function loadAssets(callback) {
+            const loadingScreen = document.getElementById('loading-screen');
+            const progressFill = document.getElementById('progress-fill');
+            const files = [];
+            files.push({ key: 'cat', path: './assets/models/cat.glb' });
+            FURNITURE_DB.forEach(i => { if(i.modelFile) files.push({ key: i.id, path: './assets/models/'+i.modelFile }); });
+
+            if(files.length===0) { callback(); return; }
+            let count = 0;
+            files.forEach(f => {
+                loader.load(f.path, (gltf) => {
+                    gltf.scene.traverse(c=>{if(c.isMesh){c.castShadow=true;c.receiveShadow=true; c.frustumCulled=false;}}); // 关闭剔除防消失
+                    loadedModels[f.key] = { scene: gltf.scene, animations: gltf.animations };
+                    count++; check();
+                }, undefined, (err)=>{ console.log("Fallback box for "+f.path); count++; check(); });
+            });
+            function check() {
+                progressFill.style.width = Math.floor((count/files.length)*100)+'%';
+                if(count===files.length) { setTimeout(()=>{ loadingScreen.style.opacity=0; setTimeout(()=>loadingScreen.remove(),500); callback(); }, 500); }
+            }
+        }
+
+        class Cat {
+            constructor(scene, color) {
+                this.scene = scene;
+                this.state = 'idle'; this.targetPos = new THREE.Vector3(); this.interactTarget = null; this.timer = 0;
+                this.mixer = null; this.actions = {}; this.isAnimated = false;
+
+                this.mesh = new THREE.Group();
+                this.scene.add(this.mesh);
+
+                if (loadedModels['cat']) {
+                    const model = loadedModels['cat'].scene.clone();
+                    model.scale.set(CAT_CONFIG.scale, CAT_CONFIG.scale, CAT_CONFIG.scale);
+                    model.position.y = CAT_CONFIG.yOffset;
+                    this.mesh.add(model);
+
+                    // --- 动画容错 ---
+                    if (loadedModels['cat'].animations.length > 0) {
+                        this.isAnimated = true;
+                        this.mixer = new THREE.AnimationMixer(model);
+                        const anims = loadedModels['cat'].animations;
+                        // 尝试智能查找，找不到就用第0个和第1个
+                        const idleAnim = anims.find(a=>a.name.toLowerCase().includes('idle')) || anims[0];
+                        const walkAnim = anims.find(a=>a.name.toLowerCase().includes('walk')) || anims.find(a=>a.name.toLowerCase().includes('run')) || anims[1] || anims[0];
+                        
+                        this.actions['idle'] = this.mixer.clipAction(idleAnim);
+                        this.actions['walk'] = this.mixer.clipAction(walkAnim);
+                        this.actions['idle'].play(); 
+                        this.currentAction = this.actions['idle'];
+                        console.log("Cat Animations Loaded:", idleAnim.name, walkAnim.name);
+                    } else {
+                        console.warn("Cat model has no animations! Using slide mode.");
+                    }
+                } else {
+                    this.mesh.add(this.createBlockCat(color));
+                }
+                
+                this.mesh.position.set(0, 0, 0);
+                this.chooseNewAction();
+            }
+
+            createBlockCat(color) {
+                const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:color});
+                const b=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.3,0.6),m); b.position.y=0.15; g.add(b);
+                const h=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.3,0.3),m); h.position.set(0,0.4,0.4); g.add(h);
+                return g;
+            }
+
+            update(dt) {
+                if(this.isAnimated && this.mixer) this.mixer.update(dt);
+                
+                if(this.interactTarget) {
+                    if(!placedFurniture.includes(this.interactTarget)||!this.interactTarget.visible) { this.interrupt(); return; }
+                }
+                
+                // 移动逻辑独立于动画，即使模型是静止的，Group也会移动
+                if(this.state==='walking') {
+                    if(this.isAnimated && this.currentAction!==this.actions['walk']) { this.currentAction.fadeOut(0.2); this.actions['walk'].reset().fadeIn(0.2).play(); this.currentAction=this.actions['walk']; }
+                    
+                    const dir = new THREE.Vector3().subVectors(this.targetPos, this.mesh.position); dir.y=0;
+                    if(dir.length()<0.1) {
+                        this.mesh.position.x=this.targetPos.x; this.mesh.position.z=this.targetPos.z;
+                        if(this.interactTarget) this.enterInteraction(); else { this.state='idle'; this.timer=2; }
+                    } else {
+                        dir.normalize(); 
+                        this.mesh.position.add(dir.multiplyScalar(2.0*dt)); // 移动 Group
+                        this.mesh.lookAt(this.targetPos.x, this.mesh.position.y, this.targetPos.z);
+                    }
+                } else if(this.state==='idle') {
+                    if(this.isAnimated && this.currentAction!==this.actions['idle']) { this.currentAction.fadeOut(0.2); this.actions['idle'].reset().fadeIn(0.2).play(); this.currentAction=this.actions['idle']; }
+                    this.timer-=dt; if(this.timer<=0) this.chooseNewAction();
+                } else if(this.state==='interacting') {
+                    if(this.isAnimated && this.currentAction!==this.actions['idle']) { this.currentAction.fadeOut(0.2); this.actions['idle'].reset().fadeIn(0.2).play(); this.currentAction=this.actions['idle']; }
+                    this.timer-=dt; if(Math.random()<0.01)spawnHeart(this.mesh.position); if(this.timer<=0)this.leaveInteraction();
+                }
+            }
+            interrupt() { showEmote(this.mesh.position,'❓'); this.state='idle'; this.interactTarget=null; this.timer=1; this.mesh.position.y=0; }
+            chooseNewAction() {
+                const valid=placedFurniture.filter(f=>f.userData.dbItem.layer===1 && f.visible);
+                if(valid.length>0 && Math.random()<0.7) { this.interactTarget=valid[Math.floor(Math.random()*valid.length)]; this.targetPos.copy(this.interactTarget.position); this.state='walking'; }
+                else { this.interactTarget=null; this.targetPos.set((Math.random()-0.5)*8,0,(Math.random()-0.5)*8); this.state='walking'; }
+            }
+            enterInteraction() { 
+                this.state='interacting'; this.timer=5+Math.random()*5; 
+                if(this.interactTarget){
+                    const h = this.interactTarget.userData.dbItem.surfaceHeight || 0;
+                    const box=new THREE.Box3().setFromObject(this.interactTarget); 
+                    this.mesh.position.y = (h > 0) ? h : box.max.y; 
+                    this.mesh.rotation.y=Math.random()*Math.PI*2;
+                } 
+            }
+            leaveInteraction() { this.state='idle'; this.mesh.position.y=0; this.timer=0.5; }
+        }
+
+        window.debugAddMoney = function() { updateMoney(100); };
+        function updateMoney(amt) { heartScore+=amt; document.getElementById('heart-count').innerText=heartScore; refreshShopState(); }
+        function refreshShopState() { document.querySelectorAll('.item-btn').forEach(b=>{const p=parseInt(b.dataset.price); if(heartScore>=p)b.classList.remove('disabled'); else b.classList.add('disabled');}); }
+        function spawnHeart(pos) { const v=pos.clone(); v.y+=1; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='heart-float'; e.innerText='❤ +5'; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); updateMoney(5); setTimeout(()=>e.remove(),1500); }
+        function showEmote(pos,t) { const v=pos.clone(); v.y+=1.2; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='emote-bubble'; e.innerText=t; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); setTimeout(()=>e.remove(),1000); }
+
+        window.startNewPlacement = function(id) {
+            const item = FURNITURE_DB.find(i=>i.id===id);
+            if(heartScore<item.price) { alert("金钱不足"); return; }
+            deselect(); mode='placing_new'; currentItemData=item; currentRotation=0;
+            createGhost(); // 参数简化，内部读取currentItemData
+            updateStatusText("放置: "+item.name);
+            document.querySelectorAll('.item-btn').forEach(b=>b.classList.remove('selected'));
+        }
+        document.getElementById('btn-move').onclick=()=>{if(selectedObject)startMovingOld(selectedObject);hideContextMenu();}
+        document.getElementById('btn-delete').onclick=()=>{if(selectedObject)deleteSelected();hideContextMenu();}
+        document.getElementById('btn-cancel').onclick=()=>{deselect();hideContextMenu();}
+
+        function renderShopItems(cat) {
+            const c=document.getElementById('items-scroll'); c.innerHTML='';
+            let typeFilter = cat; if(cat==='small') typeFilter='small';
+            FURNITURE_DB.filter(i=>i.type===typeFilter).forEach(item=>{
+                const b=document.createElement('div'); b.className='item-btn'; b.dataset.price=item.price;
+                b.onclick=(e)=>{ e.stopPropagation(); if(!b.classList.contains('disabled')){ startNewPlacement(item.id); document.querySelectorAll('.item-btn').forEach(x=>x.classList.remove('selected')); b.classList.add('selected'); } };
+                const col=document.createElement('div'); col.className='color-preview'; col.style.background='#'+item.color.toString(16).padStart(6,'0');
+                const t=document.createElement('span'); t.innerText=item.name;
+                const p=document.createElement('div'); p.className='price-tag'; p.innerText='❤ '+item.price;
+                b.append(col,t,p); c.appendChild(b);
+            }); refreshShopState();
+        }
+
+        // --- 核心修正：自动对齐底部 ---
+        function createGhost() {
+            if(ghostMesh) scene.remove(ghostMesh);
+            const item = currentItemData;
+            
+            if (item.modelFile && loadedModels[item.id]) {
+                const rawModel = loadedModels[item.id].scene.clone();
+                
+                // 如果需要修复底部 (针对杯子等)
+                if (item.fixBottom) {
+                    const box = new THREE.Box3().setFromObject(rawModel);
+                    // 将模型向上移动，使底部为0 (rawModel的中心不动，我们包一层Group或者直接移动mesh)
+                    // 这里我们为了简单，直接移动 rawModel
+                    rawModel.position.y = -box.min.y;
+                }
+                
+                // 统一包一层 Group，确保 GhostMesh 原点就是逻辑坐标
+                ghostMesh = new THREE.Group();
+                ghostMesh.add(rawModel);
+                
+                const s = item.modelScale || 1.0;
+                ghostMesh.scale.set(s,s,s);
+            } else {
+                let mat = item.light ? new THREE.MeshStandardMaterial({color:item.color, emissive:item.color, emissiveIntensity:0.5, transparent:true, opacity:0.6}) : new THREE.MeshStandardMaterial({color:item.color, transparent:true, opacity:0.6});
+                ghostMesh = new THREE.Mesh(new THREE.BoxGeometry(item.size.x, item.size.y, item.size.z), mat);
+                // BoxGeometry默认中心在0，所以需要抬高一半
+                if (!item.modelFile) ghostMesh.geometry.translate(0, item.size.y/2, 0); 
+            }
+            
+            ghostMesh.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.transparent = true; c.material.opacity = 0.5; } });
+            ghostMesh.position.set(0,-100,0);
+            if(item.type!=='wall') ghostMesh.rotation.y = currentRotation;
+            scene.add(ghostMesh);
+        }
+
+        function init() { loadAssets(() => { updateStatusText("开始游戏"); startGame(); }); }
+
+        function startGame() {
+            document.getElementById('heart-count').innerText = heartScore;
+            window.switchCategory('floor');
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0xdceefb);
+            renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+            const aspect=window.innerWidth/window.innerHeight; const d=12;
+            camera = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 1, 1000);
+            camera.position.set(20, 20, 20); camera.lookAt(0,0,0);
+            controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.maxPolarAngle = Math.PI/2.1;
+            const al = new THREE.AmbientLight(0xffffff, 0.6); scene.add(al);
+            const dl = new THREE.DirectionalLight(0xffdfba, 0.8); dl.position.set(10,20,10); dl.castShadow=true;
+            dl.shadow.camera.left=-15; dl.shadow.camera.right=15; dl.shadow.camera.top=15; dl.shadow.camera.bottom=-15; scene.add(dl);
+            raycaster = new THREE.Raycaster(); pointer = new THREE.Vector2();
+            
+            const fg=new THREE.PlaneGeometry(12,12); const fm=new THREE.MeshStandardMaterial({color:0x8ec976});
+            floorPlane=new THREE.Mesh(fg, fm); floorPlane.rotation.x=-Math.PI/2; floorPlane.receiveShadow=true; scene.add(floorPlane);
+            const gh=new THREE.GridHelper(12,24,0xffffff,0xffffff); gh.position.y=0.01; gh.material.opacity=0.2; gh.material.transparent=true; scene.add(gh);
+            const wm=new THREE.MeshStandardMaterial({color:0xfff6d3});
+            const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3,0.5), wm); w1.position.set(0,1.5,-5.25); w1.receiveShadow=true; w1.castShadow=true; scene.add(w1); obstacles.push(w1);
+            const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3,10), wm); w2.position.set(-5.25,1.5,0); w2.receiveShadow=true; w2.castShadow=true; scene.add(w2); obstacles.push(w2);
+            
+            cats.push(new Cat(scene, 0xffa502));
+
+            window.addEventListener('resize', ()=> { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+            window.addEventListener('pointermove', onMove); window.addEventListener('pointerdown', onDown); window.addEventListener('pointerup', onUp);
+            window.addEventListener('contextmenu', (e)=>{ e.preventDefault(); if(mode==='placing_new') cancelPlace(); else if(mode==='moving_old') cancelMove(); else deselect(); });
+            window.addEventListener('keydown', (e)=>{ if((e.key==='r'||e.key==='R') && ghostMesh && currentItemData.type!=='wall') rotateItem(); });
+            animate();
+        }
+
+        function rotateItem() { currentRotation += Math.PI/2; if(ghostMesh) { ghostMesh.rotation.y = currentRotation; checkColl(false); } }
+        function startMovingOld(m) {
+            mode = 'moving_old'; editingObjectOriginalPos=m.position.clone(); editingObjectOriginalQuat=m.quaternion.clone();
+            const savedData = m.userData.dbItem || FURNITURE_DB[0]; currentItemData = savedData;
+            if(currentItemData.type!=='wall') currentRotation=m.rotation.y; else currentRotation=0;
+            createGhost(); // 参数简化
+            m.visible=false; updateStatusText("正在移动...");
+        }
+        function deleteSelected() { if(!selectedObject)return; scene.remove(selectedObject); const i=placedFurniture.indexOf(selectedObject); if(i>-1)placedFurniture.splice(i,1); deselect(); }
+        
+        function onMove(e) {
+            if(longPressTimer) { if(Math.hypot(e.clientX-startPointer.x, e.clientY-startPointer.y)>5) { clearTimeout(longPressTimer); longPressTimer=null; } }
+            pointer.x=(e.clientX/window.innerWidth)*2-1; pointer.y=-(e.clientY/window.innerHeight)*2+1;
+            
+            if((mode==='placing_new'||mode==='moving_old') && ghostMesh) {
+                raycaster.setFromCamera(pointer, camera);
+                // Wall
+                if(currentItemData.type==='wall') {
+                    const hits = raycaster.intersectObjects(obstacles);
+                    if(hits.length>0) {
+                        const h=hits[0]; const n=h.face.normal; if(Math.abs(n.y)>0.5) return;
+                        const pos=h.point.clone().add(n.clone().multiplyScalar(currentItemData.size.z/2+0.01));
+                        if(Math.abs(n.x)>0.5) { pos.y=Math.round(pos.y/0.5)*0.5; pos.z=Math.round(pos.z/0.5)*0.5; } else { pos.x=Math.round(pos.x/0.5)*0.5; pos.y=Math.round(pos.y/0.5)*0.5; }
+                        const hh=currentItemData.size.y/2; if(pos.y<hh) pos.y=hh; if(pos.y+hh>3) pos.y=3-hh;
+                        ghostMesh.position.copy(pos); ghostMesh.lookAt(pos.clone().add(n)); checkColl(true);
+                    }
+                    return;
+                }
+                // Table
+                let onTable = false;
+                if(currentItemData.layer === 2) {
+                    const hits = raycaster.intersectObjects(placedFurniture.filter(f=>f.visible && f.userData.dbItem.layer===1));
+                    if(hits.length > 0) {
+                        const hit = hits[0];
+                        ghostMesh.position.set(hit.point.x, hit.point.y, hit.point.z); // 已通过 fixBottom 修正原点，直接放
+                        ghostMesh.rotation.set(0, currentRotation, 0); 
+                        checkColl(false); onTable = true;
+                    }
+                }
+                // Floor
+                if(!onTable) {
+                    const hits = raycaster.intersectObject(floorPlane);
+                    if(hits.length>0) {
+                        const p=hits[0].point; 
+                        ghostMesh.position.set(Math.round(p.x/0.5)*0.5, 0, Math.round(p.z/0.5)*0.5); // 地面总是0
+                        ghostMesh.rotation.set(0, currentRotation, 0); checkColl(false);
+                    }
+                }
+            }
+        }
+        
+        function checkColl(isWall) {
+            ghostMesh.updateMatrixWorld(); const box=new THREE.Box3().setFromObject(ghostMesh); box.expandByScalar(-0.1); 
+            let col=false;
+            if(!isWall) for(let o of obstacles) if(box.intersectsBox(new THREE.Box3().setFromObject(o))) { col=true; break; }
+            if(!col) for(let f of placedFurniture) { 
+                if(mode==='moving_old'&&f===selectedObject)continue; 
+                const myL=currentItemData.layer; const otherL=f.userData.dbItem.layer;
+                if(myL===0 || otherL===0) continue; if(myL===2 && otherL===1) continue; if(myL===1 && otherL===2) continue; 
+                if(box.intersectsBox(new THREE.Box3().setFromObject(f))) { col=true; break; } 
+            }
+            if(ghostMesh.position.y<0) col=true;
+            if(col) { ghostMesh.traverse(c=>{if(c.isMesh)c.material.color.setHex(0xff0000)}); canPlace=false; updateStatusText("位置冲突", "invalid"); } 
+            else { ghostMesh.traverse(c=>{if(c.isMesh){if(currentItemData.modelFile && loadedModels[currentItemData.id]) c.material.color.setHex(0xffffff); else c.material.color.setHex(currentItemData.color);}}); canPlace=true; updateStatusText("可放置", "valid"); }
+        }
+        
+        function confirmPlace() {
+            if(mode === 'placing_new') { if(heartScore >= currentItemData.price) updateMoney(-currentItemData.price); else { alert("金钱不足!"); cancelPlace(); return; } }
+            const m = ghostMesh.clone(); 
+            m.traverse(c => { if(c.isMesh) { c.material = c.material.clone(); c.material.transparent = false; c.material.opacity = 1.0; c.castShadow = true; c.receiveShadow = true; if(currentItemData.light) { c.material.emissiveIntensity = 0.8; if(!currentItemData.modelFile) c.material.emissive.setHex(currentItemData.color); } else { c.material.emissive.setHex(0); } } });
+            m.userData={type:currentItemData.type, dbItem: currentItemData, origScale: m.scale.clone()}; // 保存scale用于bounce
+            if(currentItemData.light) { const sl=new THREE.SpotLight(0xfff0dd,5); sl.position.set(0,0,0); sl.target.position.set(0,0,5); m.add(sl); m.add(sl.target); }
+            scene.add(m); 
+            if(mode==='moving_old') { scene.remove(selectedObject); const i=placedFurniture.indexOf(selectedObject); if(i>-1)placedFurniture.splice(i,1); deselect(); }
+            placedFurniture.push(m); playBounce(m);
+            if(mode==='moving_old') { mode='idle'; scene.remove(ghostMesh); ghostMesh=null; updateStatusText("移动完成"); }
+        }
+
+        function onDown(e) { if(e.target!==renderer.domElement)return; if(e.button===1&&ghostMesh&&currentItemData.type!=='wall'){e.preventDefault();rotateItem();return;} if(e.button===0){startPointer.x=e.clientX;startPointer.y=e.clientY;if(mode==='idle')longPressTimer=setTimeout(()=>handleLong(e),500);if((mode==='placing_new'||mode==='moving_old')&&canPlace&&ghostMesh)confirmPlace();}}
+        function onUp() { if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;} }
+        function handleLong(e) { raycaster.setFromCamera(pointer, camera); const hits=raycaster.intersectObjects(placedFurniture); if(hits.length>0)selectObj(hits[0].object,e.clientX,e.clientY);else deselect(); }
+        function selectObj(m,x,y) { deselect(); let t=m; while(t.parent&&t.parent!==scene)t=t.parent; selectedObject=t; selectionBox=new THREE.BoxHelper(selectedObject,0xffffff); scene.add(selectionBox); showMenu(x,y); updateStatusText("选中: 家具"); }
+        function deselect() { selectedObject=null; if(selectionBox){scene.remove(selectionBox);selectionBox=null;} document.getElementById('context-menu').style.display='none'; }
+        function cancelPlace() { if(ghostMesh)scene.remove(ghostMesh); mode='idle'; ghostMesh=null; updateStatusText("浏览中"); }
+        function cancelMove() { if(mode==='moving_old'){if(ghostMesh)scene.remove(ghostMesh);if(selectedObject){selectedObject.position.copy(editingObjectOriginalPos);selectedObject.quaternion.copy(editingObjectOriginalQuat);selectedObject.visible=true;}} deselect(); mode='idle'; ghostMesh=null; }
+        function showMenu(x,y) { const m=document.getElementById('context-menu'); m.style.display='flex'; let px=x+10, py=y+10; if(px+100>window.innerWidth)px=window.innerWidth-110; if(py+100>window.innerHeight)py=window.innerHeight-110; m.style.left=px+'px'; m.style.top=py+'px'; }
+        function hideContextMenu() { document.getElementById('context-menu').style.display='none'; }
+        function updateStatusText(t,c) { const e=document.getElementById('status-text'); e.innerText=t; e.className=c==='valid'?'status-valid':(c==='invalid'?'status-invalid':''); }
+        
+        function playBounce(m) { 
+            let f=0; const baseScale = m.userData.origScale || new THREE.Vector3(1,1,1);
+            function a(){ if(f<20){const k=f/20; const s=0.1+(0.9)*(Math.sin(k*Math.PI*1.5)*0.2+k); m.scale.set(baseScale.x*s, baseScale.y*s, baseScale.z*s); f++; requestAnimationFrame(a); }else m.scale.copy(baseScale); } a(); 
+        }
+        
+        let lastTime=0;
+        function animate(time) {
+            requestAnimationFrame(animate); const dt=(time-lastTime)/1000; lastTime=time;
+            controls.update(); if(selectionBox) selectionBox.material.opacity=0.5+Math.sin(time*0.005)*0.5;
+            for(const cat of cats) cat.update(dt||0.016);
+            renderer.render(scene, camera);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
