@@ -4,15 +4,7 @@ import * as THREE from 'three';
         import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
         import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
         // === [新增] 后期处理模块 (直接复制这一段放在这里) ===
-        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-        import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
-        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-        import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
-        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-
-        // [新增] 只引入 ShaderPass，不需要 TiltShiftShader.js 了
-        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        // 后期处理已迁移到 ./rendering/PostProcessing.js
 
         // === 模块化导入 ===
         import { AudioManager } from './managers/AudioManager.js';
@@ -27,6 +19,7 @@ import * as THREE from 'three';
         import { FURNITURE_DB } from './data/FurnitureDB.js';
         import { DIARY_CONFIG } from './data/DiaryConfig.js';
         import { CustomTiltShiftShader } from './shaders/TiltShiftShader.js';
+        import { initPostProcessing, resizePostProcessing } from './rendering/PostProcessing.js';
 
         setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
@@ -567,58 +560,10 @@ import * as THREE from 'three';
         }
 // === CustomTiltShiftShader 已迁移到 ./shaders/TiltShiftShader.js ===
 
-                // === [新增] 后期处理逻辑 ===
+                // === PostProcessing 已迁移到 ./rendering/PostProcessing.js ===
         let composer;
 
-        function initPostProcessing() {
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-
-            composer = new EffectComposer(renderer);
-            
-            // 1. 基础场景渲染
-            const renderPass = new RenderPass(scene, camera);
-            composer.addPass(renderPass);
-
-            // 2. SSAO (环境光遮蔽) - 增加角落阴影和立体感
-            // 它是 Zelda/动森风格的关键，让物体"落地"而不是飘着
-            const saoPass = new SAOPass(scene, camera, false, true);
-            saoPass.params.output = 0; 
-            saoPass.params.saoBias = 0.5;
-            saoPass.params.saoIntensity = 0.05; // 阴影强度，越大约黑
-            saoPass.params.saoScale = 100;
-            saoPass.params.saoKernelRadius = 30;
-            composer.addPass(saoPass);
-
-            // 3. Bloom (辉光) - 让灯光和窗户有柔和光晕
-            const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
-            bloomPass.threshold = 0.95; // 提高阈值：只有真正的灯泡、窗户高光才会发光，地板不发光
-            bloomPass.strength = 0.15;  // 降低强度：防止画面太“仙”，变得清晰
-            bloomPass.radius = 0.5;
-            composer.addPass(bloomPass);
-
-            // === [新增] 移轴效果 (使用自定义 Shader) ===
-            const tiltShiftPass = new ShaderPass(CustomTiltShiftShader);
-            
-            // 参数调整：
-            tiltShiftPass.uniforms['blurradius'].value = 3.0; // 模糊强度 (建议 3.0 - 5.0)
-            tiltShiftPass.uniforms['focus'].value = 0.5;      // 焦点位置 (0.5 是正中间)
-            tiltShiftPass.uniforms['aspect'].value = window.innerWidth / window.innerHeight;
-            
-            composer.addPass(tiltShiftPass);
-            // ===================================
-            
-
-            // 4. SMAA (抗锯齿) - 消除锯齿边缘
-            const smaaPass = new SMAAPass(width, height);
-            composer.addPass(smaaPass);
-
-            // 5. Output (色彩输出) - 确保色彩空间正确
-            const outputPass = new OutputPass();
-            composer.addPass(outputPass);
-        }
-
-        // === [新增] 后期处理逻辑结束 ===
+        
 
         // === [新增] 为所有按钮绑定通用点击音效 ===
         document.querySelectorAll('button, .item-card, .shop-tab, .hud-btn-container, #weather-icon-container').forEach(btn => {
@@ -1333,16 +1278,7 @@ function renderShopItems(cat) {
             
 
             // [新增] 更新移轴 Shader 的屏幕尺寸
-            if (composer) {
-                composer.setSize(window.innerWidth, window.innerHeight);
-                composer.passes.forEach(pass => {
-                    // 找到我们的移轴 Pass 并更新 aspect
-                    if (pass.uniforms && pass.uniforms['aspect']) {
-                        pass.uniforms['aspect'].value = window.innerWidth / window.innerHeight;
-                    }
-                });
-
-            }
+            resizePostProcessing(composer);
 
             // [新增] 更新天空 Shader 的分辨率
             if (weatherSystem && weatherSystem.skyMat) {
@@ -1684,7 +1620,7 @@ function renderShopItems(cat) {
                 document.getElementById('btn-cancel').onclick=()=>{deselect();hideContextMenu();}
 
                 // === [新增] 在 startGame 底部调用后期处理初始化 ===
-                initPostProcessing();
+                composer = initPostProcessing(renderer, scene, camera);
 
                 logToScreen("Game Loop Starting...");
                 animate();
