@@ -20,23 +20,13 @@ import * as THREE from 'three';
         import { DiaryManager } from './managers/DiaryManager.js';
         import { GameSaveManager } from './managers/GameSaveManager.js';
         import { Furniture } from './entities/Furniture.js';
+        import { CAT_CONFIG } from './core/Constants.js';
 
         setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
 
         // === 1. 全局配置与变量 ===
-        const CAT_CONFIG = { 
-            scale: 0.35, rotateX: 0, rotateY: 0, yOffset: 0, 
-            anim: {
-                sleep: 0,   // Action 1: 倒下/侧躺
-                happy: 1,   // Action 2: 乞讨/高兴
-                idle: 2,    // Action 3: 寻找 (作为待机)
-                eat: 3,     // Action 4: 吃饭
-                urgent: 5,  // Action 6: 着急 (上厕所)
-                hop: 6,     // Action 7: 跳着走
-                walk: 7     // Action 8: 走路
-            }
-        };
+        // CAT_CONFIG 已迁移到 ./core/Constants.js
 
     let weatherSystem; // 全局变量
         
