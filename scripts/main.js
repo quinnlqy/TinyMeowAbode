@@ -20,6 +20,8 @@ import * as THREE from 'three';
         import { DIARY_CONFIG } from './data/DiaryConfig.js';
         import { CustomTiltShiftShader } from './shaders/TiltShiftShader.js';
         import { initPostProcessing, resizePostProcessing } from './rendering/PostProcessing.js';
+        import { playBounce, playToyAnim, spawnFloatingText, showEmoteBubble } from './utils/AnimationUtils.js';
+        import { InputManager } from './input/InputManager.js';
 
         setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
@@ -115,21 +117,13 @@ import * as THREE from 'three';
         }
        
         function spawnHeart(pos) {
-            audioManager.playSfx('get_money');  
-            const v=pos.clone(); 
-            v.y+=1; v.project(camera); 
-            const x=(v.x*.5+.5)*window.innerWidth; 
-            const y=(-(v.y*.5)+.5)*window.innerHeight; 
-            const e=document.createElement('div'); 
-            e.className='heart-float'; 
-            e.innerText='❤ +5'; 
-            e.style.left=x+'px'; 
-            e.style.top=y+'px'; 
-            document.body.appendChild(e); 
-            updateMoney(5); 
-            setTimeout(()=>e.remove(),1500); 
+            audioManager.playSfx('get_money');
+            spawnFloatingText(camera, pos, '❤ +5', 'heart-float');
+            updateMoney(5);
         }
-        function showEmote(pos,t) { const v=pos.clone(); v.y+=1.2; v.project(camera); const x=(v.x*.5+.5)*window.innerWidth; const y=(-(v.y*.5)+.5)*window.innerHeight; const e=document.createElement('div'); e.className='emote-bubble'; e.innerText=t; e.style.left=x+'px'; e.style.top=y+'px'; document.body.appendChild(e); setTimeout(()=>e.remove(),1000); }
+        function showEmote(pos, t) {
+            showEmoteBubble(camera, pos, t);
+        }
 
         // [升级版] 材质优化函数：赋予模型"动森"般的磨砂质感
         function sanitizeMaterial(child) {
@@ -1237,35 +1231,7 @@ function renderShopItems(cat) {
             } 
         }
 
-        function playBounce(m) { let f=0; const baseScale = m.userData.parentClass.dbItem.modelScale || 1; function a(){ if(f<20){const k=f/20; const s=0.1+(0.9)*(Math.sin(k*Math.PI*1.5)*0.2+k); m.scale.set(baseScale*s, baseScale*s, baseScale*s); f++; requestAnimationFrame(a); }else m.scale.set(baseScale, baseScale, baseScale); } a(); }
-        // [新增] 玩具挤压动画 (模拟物理弹性)
-        function playToyAnim(mesh) {
-            let frame = 0;
-            const originalScale = mesh.userData.parentClass.dbItem.modelScale || 1.0;
-            
-            function animate() {
-                frame++;
-                // 简单的弹性公式：前10帧变扁，后10帧弹回
-                if (frame <= 5) {
-                    // 压扁：Y轴变小，XZ轴变大
-                    const s = 1.0 - (frame / 5) * 0.3; // 压扁 30%
-                    const s_fat = 1.0 + (frame / 5) * 0.1; 
-                    mesh.scale.set(originalScale * s_fat, originalScale * s, originalScale * s_fat);
-                } else if (frame <= 15) {
-                    // 回弹：甚至稍微拉长一点 (Q弹感)
-                    const t = (frame - 5) / 10;
-                    const s = 0.7 + t * 0.4; // 0.7 -> 1.1
-                    const s_thin = 1.1 - t * 0.15;
-                    mesh.scale.set(originalScale * s_thin, originalScale * s, originalScale * s_thin);
-                } else if (frame <= 20) {
-                    // 恢复正常
-                    mesh.scale.set(originalScale, originalScale, originalScale);
-                    return; // 结束动画
-                }
-                requestAnimationFrame(animate);
-            }
-            animate();
-        }
+        // === 动画函数已迁移到 ./utils/AnimationUtils.js ===
         
         
         function onWindowResize() { 
