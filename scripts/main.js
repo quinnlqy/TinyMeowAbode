@@ -18,6 +18,8 @@ import * as THREE from 'three';
         import { AudioManager } from './managers/AudioManager.js';
         import { WeatherSystem, SkyShader, AuroraShader, createParticleTexture } from './systems/WeatherSystem.js';
         import { DiaryManager } from './managers/DiaryManager.js';
+        import { GameSaveManager } from './managers/GameSaveManager.js';
+        import { Furniture } from './entities/Furniture.js';
 
         setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
@@ -679,7 +681,7 @@ import * as THREE from 'three';
             boxMesh.traverse(c => { if(c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
             scene.add(boxMesh); 
             const boxDbItem = { id: 'mystery_box', name: "快递箱", price: 0, type: 'floor', layer: 1 };
-            const boxFurnitureInstance = new Furniture(boxMesh, boxDbItem); boxFurnitureInstance.isBox = true; boxFurnitureInstance.isTipped = isTall; boxFurnitureInstance.boxHeight = realHeight;
+            const boxFurnitureInstance = new Furniture(boxMesh, boxDbItem, furnitureCallbacks); boxFurnitureInstance.isBox = true; boxFurnitureInstance.isTipped = isTall; boxFurnitureInstance.boxHeight = realHeight;
             placedFurniture.push(boxMesh); showEmote(boxMesh.position, '📦');
         }
 
@@ -959,189 +961,36 @@ import * as THREE from 'three';
                     btn.addEventListener('click', () => audioManager.playSfx('ui_click'));
                 });
 
-        class Furniture {
-            constructor(mesh, dbItem) {
-                this.mesh = mesh; this.dbItem = dbItem; this.mesh.userData.parentClass = this; 
-                this.functionalState = null; this.isBox = false; this.modelEmpty = null; this.modelFull = null;
-                if (this.dbItem.type === 'functional') { this.initFunctionalState(); }
-            }
-
-            initFunctionalState() {
-                if (this.mesh.children.length > 0) { this.modelEmpty = this.mesh.children[0]; }
-                if (this.dbItem.fullModelFile) {
-                    const fullItemConfig = { ...this.dbItem, id: this.dbItem.id + '_full', modelFile: this.dbItem.fullModelFile };
-                    const fullGroup = prepareModel(fullItemConfig);
-                    if (fullGroup) {
-                        this.modelFull = fullGroup.children[0]; 
-                        this.mesh.add(this.modelFull); 
-                    } else {
-                        logToScreen(`Warning: Full model missing: ${this.dbItem.fullModelFile}`, 'error');
-                    }
-                }
-                
-                if (this.dbItem.subType === 'food') 
-                    this.functionalState = 'full';
-                else if (this.dbItem.subType === 'toilet') 
-                    this.functionalState = 'clean';
-                
-                this.updateVisuals();
-            }
-
-            updateVisuals() {
-                if (!this.modelEmpty) return;
-                const setVis = (emptyVis, fullVis) => {
-                    this.modelEmpty.visible = emptyVis;
-                    if(this.modelFull) this.modelFull.visible = fullVis;
-                }
-                if (this.dbItem.subType === 'food') {
-                    this.functionalState === 'full' ? setVis(false, true) : setVis(true, false);
-                } else if (this.dbItem.subType === 'toilet') {
-                    this.functionalState === 'clean' ? setVis(false, true) : setVis(true, false);
-                }
-            }
-
-            interact() {
-                const needsRefill = (this.dbItem.subType === 'food' && this.functionalState === 'empty') || 
-                                    (this.dbItem.subType === 'toilet' && this.functionalState === 'dirty');
-
-                if (needsRefill) {
-                    let title = this.dbItem.subType === 'food' ? "补充猫粮?" : "清理猫砂?";
-                    showConfirmDialog(title, "需要消耗 10 爱心", () => {
-                        this.confirmRefill();
-                    });
-                    return true;
-                }
-                return false;
-            }
-
-            confirmRefill() {
-                if (heartScore >= 10) {
-                    updateMoney(-10);
-
-
-                    if (this.dbItem.subType === 'food') {
-                        this.functionalState = 'full'; 
-                        showEmote(this.mesh.position, '🍚'); 
-                        updateStatusText("猫粮已加满");
-                        diaryManager.logEvent('feed', {}, 50);
-                        audioManager.playSfx('pour_food'); // [新增] 倒猫粮声 
-
-                    } else {
-                        this.functionalState = 'clean'; 
-                        showEmote(this.mesh.position, '✨'); 
-                        updateStatusText("猫砂盆已清理");
-                        // [修改] 调用 logEvent，给铲屎一个权重
-                        diaryManager.logEvent('clean', {}, 50);
-                        audioManager.playSfx('scoop_sand'); // [新增] 铲屎声 
-                    }
-                    this.updateVisuals();
-                    gameSaveManager.saveGame(); // 也要存盘
-
-                } else {
-                    alert("爱心不足！");
-                }
-                gameSaveManager.saveGame();
-
-
-            }
-
-            useByCat() {
-                if (this.dbItem.subType === 'food' && this.functionalState === 'full') {
-                    this.functionalState = 'empty'; this.updateVisuals(); showEmote(this.mesh.position, '😋');
-                } else if (this.dbItem.subType === 'toilet' && this.functionalState === 'clean') {
-                    this.functionalState = 'dirty'; this.updateVisuals(); showEmote(this.mesh.position, '💩');
-                }
-
-                gameSaveManager.saveGame();
-            }
-        }
+        // === Furniture 已迁移到 ./entities/Furniture.js ===
+        // 家具回调对象（供 Furniture 类使用）
+        const furnitureCallbacks = {
+            prepareModel,
+            logToScreen,
+            showConfirmDialog,
+            getHeartScore: () => heartScore,
+            updateMoney,
+            showEmote,
+            updateStatusText,
+            get diaryManager() { return diaryManager; },
+            get audioManager() { return audioManager; },
+            saveGame: () => gameSaveManager.saveGame()
+        };
 
         // === DiaryManager 已迁移到 ./managers/DiaryManager.js ===
 
-                // === [新增] 游戏存档管理器 ===
-        class GameSaveManager {
-            constructor() {
-                this.saveKey = 'cat_game_save_v1';
-                // 自动保存间隔 (30秒)
-                setInterval(() => this.saveGame(), 30000);
+        // === GameSaveManager 已迁移到 ./managers/GameSaveManager.js ===
+
+        const gameSaveManager = new GameSaveManager(
+            // 获取游戏数据的回调
+            () => ({ cats, heartScore, activeDecorId, placedFurniture }),
+            // 恢复数据的回调
+            {
+                setHeartScore: (val) => { heartScore = val; setDomText('heart-text-display', heartScore); },
+                setActiveDecor: (val) => { activeDecorId = val; },
+                applyDecorVisuals: applyDecorVisuals,
+                FURNITURE_DB: FURNITURE_DB
             }
-
-            // 收集当前游戏数据并保存
-            saveGame() {
-                if (!cats[0]) return; // 还没初始化好
-
-                const saveData = {
-                    // 1. 基础数据
-                    heartScore: heartScore,
-                    activeDecor: activeDecorId, // 装修状态
-                    
-                    // 2. 猫咪状态 (只存一只)
-                    catStats: {
-                        hunger: cats[0].stats.hunger,
-                        toilet: cats[0].stats.toilet,
-                        // 甚至可以存位置，但为了简单，下次登录重置位置比较安全
-                    },
-
-                    // 3. 家具列表
-                    furniture: placedFurniture.map(f => {
-                        const p = f.userData.parentClass;
-                        return {
-                            id: p.dbItem.id, // 核心ID
-                            pos: { x: f.position.x, y: f.position.y, z: f.position.z },
-                            rot: { y: f.rotation.y },
-                            // 如果是功能性家具，存状态 (full/empty)
-                            funcState: p.functionalState, 
-                            // 标记是否是箱子 (虽然箱子一般不存，但如果为了保留也要存)
-                            isBox: p.isBox,
-                            isTipped: p.isTipped,
-                            boxHeight: p.boxHeight
-                        };
-                    })
-                };
-
-                localStorage.setItem(this.saveKey, JSON.stringify(saveData));
-                console.log("Game Saved:", saveData);
-            }
-
-            // 读取并恢复游戏
-            loadGame() {
-                const json = localStorage.getItem(this.saveKey);
-                if (!json) return false; // 没有存档
-
-                try {
-                    const data = JSON.parse(json);
-                    
-                    // 1. 恢复金钱
-                    if (data.heartScore !== undefined) {
-                        heartScore = data.heartScore;
-                        setDomText('heart-text-display', heartScore);
-                    }
-
-                    // 2. 恢复装修 (地板/墙壁)
-                    if (data.activeDecor) {
-                        activeDecorId = data.activeDecor;
-                        if (activeDecorId.floor) {
-                            const item = FURNITURE_DB.find(i => i.id === activeDecorId.floor);
-                            if (item) applyDecorVisuals(item);
-                        }
-                        if (activeDecorId.wall) {
-                            const item = FURNITURE_DB.find(i => i.id === activeDecorId.wall);
-                            if (item) applyDecorVisuals(item);
-                        }
-                    }
-
-                    // 3. 恢复猫咪状态 (需要等猫生成后调用，这里先存个临时变量，或者手动赋值)
-                    // 更好的方式是：loadGame 返回数据，由 startGame 分发
-                    return data;
-
-                } catch (e) {
-                    console.error("Save file corrupted", e);
-                    return false;
-                }
-            }
-        }
-        
-        const gameSaveManager = new GameSaveManager();
+        );
 
         class Cat {
             constructor(scene, color) {
@@ -2199,7 +2048,7 @@ function renderShopItems(cat) {
                 } 
             });
             
-            const newFurniture = new Furniture(m, currentItemData);
+            const newFurniture = new Furniture(m, currentItemData, furnitureCallbacks);
             scene.add(m); 
             placedFurniture.push(m);
 
@@ -2896,7 +2745,7 @@ function renderShopItems(cat) {
                                     modelGroup.rotation.y = fData.rot.y;
                                     
                                     // 实例化类
-                                    const furnClass = new Furniture(modelGroup, itemConfig);
+                                    const furnClass = new Furniture(modelGroup, itemConfig, furnitureCallbacks);
                                     
                                     // 恢复功能状态 (满/空)
                                     if (fData.funcState && furnClass.functionalState) {
