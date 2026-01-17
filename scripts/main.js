@@ -22,6 +22,7 @@ import * as THREE from 'three';
         import { Furniture } from './entities/Furniture.js';
         import { CAT_CONFIG } from './core/Constants.js';
         import { createBlockCat, calculatePathInfo, calculateJumpPosition, generateWanderTarget } from './entities/CatUtils.js';
+        import { GameContext } from './core/GameContext.js';
 
         setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
@@ -768,6 +769,9 @@ import * as THREE from 'three';
                 const hudSlider = document.getElementById('time-slider-hud');
                 if (hudSlider && document.activeElement !== hudSlider) hudSlider.value = visualHour;
             } 
+            
+            // 同步到 GameContext（供模块化组件使用）
+            GameContext.visualHour = visualHour; 
 
                         // 3. [修改] 更新新版 HUD UI
             const displayH = realHour;
@@ -2695,6 +2699,29 @@ function renderShopItems(cat) {
                 wallGroup = [w1, w2];
                 
                 logToScreen("Spawning Cat...");
+                
+                // === 初始化 GameContext（供模块化组件使用）===
+                GameContext.init({
+                    scene,
+                    camera,
+                    renderer,
+                    floorPlane,
+                    loadedModels,
+                    placedFurniture,
+                    cats,
+                    audioManager,
+                    diaryManager,
+                    gameSaveManager,
+                    weatherSystem,
+                    CAT_CONFIG,
+                    FURNITURE_DB,
+                    DIARY_CONFIG,
+                    updateStatusText,
+                    showEmote,
+                    spawnHeart,
+                    logToScreen,
+                    showConfirmDialog
+                });
                 
                 // [修复] 必须先定义 newCat 变量，下面恢复存档时才能用
                 const newCat = new Cat(scene, 0xffa502); 
