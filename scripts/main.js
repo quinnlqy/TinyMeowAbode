@@ -21,6 +21,7 @@ import * as THREE from 'three';
         import { GameSaveManager } from './managers/GameSaveManager.js';
         import { Furniture } from './entities/Furniture.js';
         import { CAT_CONFIG } from './core/Constants.js';
+        import { createBlockCat, calculatePathInfo, calculateJumpPosition, generateWanderTarget } from './entities/CatUtils.js';
 
         setTimeout(() => { const ls = document.getElementById('loading-screen'); if(ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display='block'; }, 5000);
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
@@ -1022,11 +1023,11 @@ import * as THREE from 'three';
                             logToScreen(`Cat loaded with ${anims.length} animations.`);
                             if (anims.length < 8) logToScreen("Warning: Cat model has fewer than 8 animations!", 'warn');
                         }
-                    } else { this.mesh.add(this.createBlockCat(color)); }
-                } catch (e) { console.error("Cat error:", e); this.mesh.add(this.createBlockCat(color)); }
+                    } else { this.mesh.add(createBlockCat(color)); }
+                } catch (e) { console.error("Cat error:", e); this.mesh.add(createBlockCat(color)); }
                 this.mesh.position.set(0, 0, 0); this.chooseNewAction(); 
             }
-            createBlockCat(color) { const g=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:color}); const b=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.3,0.6),m); b.position.y=0.15; g.add(b); const h=new THREE.Mesh(new THREE.BoxGeometry(0.35,0.3,0.3),m); h.position.set(0,0.4,0.4); g.add(h); return g; }
+            // createBlockCat 已迁移到 ./entities/CatUtils.js
             showBubble(icon) { if (!this.bubbleEl || !this.bubbleIcon) return; this.bubbleIcon.innerText = icon; this.bubbleEl.classList.remove('hidden'); }
             hideBubble() { if (!this.bubbleEl) return; this.bubbleEl.classList.add('hidden'); }
             updateBubblePosition() { if (!this.bubbleEl || this.bubbleEl.classList.contains('hidden')) return; const pos = this.mesh.position.clone(); pos.y += 1.2; pos.project(camera); const x = (pos.x * .5 + .5) * window.innerWidth; const y = (-(pos.y * .5) + .5) * window.innerHeight; this.bubbleEl.style.left = `${x}px`; this.bubbleEl.style.top = `${y}px`; }
@@ -1518,10 +1519,10 @@ updateUI() {
                     this.state = 'walking'; 
                 } 
                 else { 
-                    // 没事干就随机走走
+                    // 没事干就随机走走（使用工具函数）
                     this.lastInteractTarget = null;
                     this.interactTarget = null; 
-                    const randPos = new THREE.Vector3((Math.random()-0.5)*8, 0, (Math.random()-0.5)*8); 
+                    const randPos = generateWanderTarget(this.mesh.position, 1, 4); 
                     this.setPath(randPos); 
                     this.state = 'walking'; 
                 }
