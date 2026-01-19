@@ -10,6 +10,7 @@
     <title>猫咪的家 - V91 细节精修版</title>
     <!-- 外部CSS样式表 -->
     <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/photo-mode.css">
     <!-- 内联样式已迁移到 styles/main.css -->
     <script>
         function logToScreen(msg, type = 'info') 
@@ -232,6 +233,11 @@
                     <img src="./assets/ui/diary_tape.png" class="polaroid-tape">
                     <span id="diary-photo-date" class="polaroid-text">Oct 24</span>
                     <span id="diary-photo-weather" class="polaroid-text">天气晴朗，适合睡觉</span>
+                    
+                    <!-- [新增] 手动拍照按钮 -->
+                    <button id="manual-photo-btn" onclick="window.takeManualPhoto()" title="拍一张今天的照片">
+                        <img src="./assets/ui/camera_icon.png" alt="拍照">
+                    </button>
                 </div>
                 <!-- 装饰贴纸 -->
                 <img src="./assets/ui/diary_deco_fish.png" class="diary-deco-fish-left">
@@ -270,7 +276,22 @@
         </div>
     </div>
 
-
+    <!-- [新增] 拍照模式覆盖层 -->
+    <div id="photo-mode-overlay" style="display: none;">
+        <!-- 相机框架 -->
+        <div id="camera-frame-container">
+            <img src="./assets/ui/Camera.png" id="camera-frame-img">
+            <!-- 取景框位置标记（用于截图定位） -->
+            <div id="viewfinder-area"></div>
+            <!-- 快门按钮 -->
+            <button id="shutter-btn" onclick="window.capturePhoto()">
+                <img src="./assets/ui/camera_button.png" id="camera-button-img">
+            </button>
+        </div>
+        
+        <!-- 退出按钮 -->
+        <button id="exit-photo-mode-btn" onclick="window.exitPhotoMode()">✕</button>
+    </div>
 
     <script type="importmap">
         { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }

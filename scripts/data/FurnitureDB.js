@@ -101,7 +101,8 @@ export const FURNITURE_DB = [
     { id: 'wall_blue',  type: 'decor', name: '清爽蓝墙', price: 50, color: 0xb3e5fc, decorType: 'wall' },
     { id: 'wall_blueWooden',  type: 'decor', name: '蓝色木墙', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'BlueWooden.jpg' },
     { id: 'MintWallpaper',  type: 'decor', name: '薄荷墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'MintWallpaper.jpg' },
-    { id: 'WoodWallpaper',  type: 'decor', name: '木纹墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'Wallpaper_1.png', wallpaperStyle: 'horizontal', wallpaperUnitWidth: 0.8 },
+    { id: 'WoodWallpaper',  type: 'decor', name: '木纹墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'Wallpaper_1.png', wallpaperStyle: 'horizontal', wallpaperUnitWidth: 1.5 },
+    { id: 'AppleWallpaper',  type: 'decor', name: '苹果墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'Wallpaper_2.png', wallpaperStyle: 'horizontal', wallpaperUnitWidth: 1.5 },
     { id: 'floor_default', type: 'decor', name: '经典米色', price: 0, color: 0xF5F5DC, decorType: 'floor' },
     { id: 'wall_default',  type: 'decor', name: '经典暖灰', price: 0, color: 0xEBE5D1, decorType: 'wall' },
 ];

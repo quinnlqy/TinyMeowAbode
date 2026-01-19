@@ -809,22 +809,25 @@ input[type=range] { flex: 1; cursor: pointer; height: 4px; accent-color: #ffaa00
 .polaroid-bg {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     object-fit: contain;
-    z-index: 0;
+    z-index: 1; /* 相框在照片上面 */
 }
-/* [修改] 照片：放大以填满相框 */
+/* [修改] 照片：4:5比例，完整显示不裁切 */
 .polaroid-photo {
     position: absolute;
     
-    /* 位置微调：往上提一点，防止上面漏白 */
+    /* 位置微调：居中显示 */
     top: 18px; 
+    left: 50%;
+    transform: translateX(-50%);
     
-    /* 尺寸放大：填满中间的区域 */
-    width: 88%; 
-    height: 78%;
+    /* 尺寸限制：最大宽高 */
+    max-width: 88%; 
+    max-height: 78%;
     
-    object-fit: cover;
-    z-index: 1;
-    background-color: #eee;
+    /* [关键修复] 使用 contain 完整显示照片，不裁切 */
+    object-fit: contain;
+    z-index: -1; /* 照片在框的下面 */
+    background-color: transparent; /* 去掉白色背景 */
     
     /* 可选：加一点圆角，防止四个角太尖锐 */
     border-radius: 2px;
@@ -834,16 +837,45 @@ input[type=range] { flex: 1; cursor: pointer; height: 4px; accent-color: #ffaa00
     top: 0px; left: 50%; transform: translateX(-50%); /* 胶带在顶部居中 */
     width: 80px; height: 30px;
     object-fit: contain;
-    z-index: 2;
+    z-index: 3; /* 胶带在最上层 */
 }
 .polaroid-text {
     position: absolute;
     font-family: 'Kalam', cursive; /* 尝试手写字体 */
     color: #5d4037; font-size: 16px;
-    z-index: 1;
+    z-index: 3; /* 文字在最上层 */
 }
-#diary-photo-date { bottom: 10px; left: 15px; } /* 日期在左下 */
-#diary-photo-weather { bottom: 10px; right: 15px; text-align: right; } /* 天气在右下 */
+#diary-photo-date { bottom: 18px; left: 40px; } /* 日期往中间移动 */
+#diary-photo-weather { bottom: 18px; right: 40px; text-align: right; } /* 天气往中间移动 */
+
+/* [新增] 手动拍照按钮 - 移动到照片框左上角胶带附近 */
+#manual-photo-btn {
+    position: absolute;
+    top: -10px;    /* 稍微在照片框上方 */
+    left: 10px;    /* 在照片框左侧偏右一点 */
+    width: 60px;   /* 从45px放大到60px */
+    height: 60px;  /* 从45px放大到60px */
+    background: transparent;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+#manual-photo-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+#manual-photo-btn:hover {
+    transform: scale(1.1);
+}
+#manual-photo-btn:active {
+    transform: scale(0.95);
+}
 
 
 /* 装饰贴纸 - 位置调整 & 去除透明度 */

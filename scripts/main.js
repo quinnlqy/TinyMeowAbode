@@ -10,6 +10,7 @@ import * as THREE from 'three';
         import { AudioManager } from './managers/AudioManager.js';
         import { WeatherSystem, SkyShader, AuroraShader, createParticleTexture } from './systems/WeatherSystem.js';
         import { DiaryManager } from './managers/DiaryManager.js';
+        import { PhotoManager } from './managers/PhotoManager.js';
         import { GameSaveManager } from './managers/GameSaveManager.js';
         import { Furniture } from './entities/Furniture.js';
         import { CAT_CONFIG } from './core/Constants.js';
@@ -743,6 +744,29 @@ import * as THREE from 'three';
                 console.log("已强制猫咪进入急迫状态 (toilet = 0)");
             });
             updateStatusText("🚽 猫咪急需上厕所！");
+        };
+        
+        // [新增] 手动拍照功能
+        window.takeManualPhoto = function() {
+            if (window.photoManager) {
+                window.photoManager.enterPhotoMode(); // 进入拍照模式
+            } else {
+                console.error('照片系统未初始化');
+            }
+        };
+        
+        // [新增] 拍照模式下的快门功能
+        window.capturePhoto = function() {
+            if (window.photoManager) {
+                window.photoManager.captureInPhotoMode();
+            }
+        };
+        
+        // [新增] 退出拍照模式
+        window.exitPhotoMode = function() {
+            if (window.photoManager) {
+                window.photoManager.exitPhotoMode();
+            }
         };
         
         // [新增] 猫咪状态调试函数
@@ -1500,9 +1524,11 @@ function renderShopItems(cat) {
                     // 获取点击点的高度
                     let targetY = hit.point.y;
                     
-                    // 如果是放在家具上，稍微处理一下，避免穿模太深
-                    // 这里简单处理：直接吸附到射线击中点
-                    draggingCat.mesh.position.set(hit.point.x, targetY, hit.point.z);
+                    // [修复] 边界检查：限制猫咪在房间范围内 (-4 到 4)
+                    const clampedX = Math.max(-4, Math.min(4, hit.point.x));
+                    const clampedZ = Math.max(-4, Math.min(4, hit.point.z));
+                    
+                    draggingCat.mesh.position.set(clampedX, targetY, clampedZ);
                 }
                 return;
             }
@@ -1675,6 +1701,9 @@ function renderShopItems(cat) {
             updateEnvironment(dt);
             cats.forEach(c => c.update(dt)); 
             if(selectionBox) selectionBox.update();
+            
+            // [新增] 更新照片系统（自动拍照检查）
+            if (photoManager) photoManager.update();
             
             // [修改] 使用 composer 替代 renderer
             // renderer.render(scene, camera);  <-- 删掉或注释这行
@@ -2013,6 +2042,10 @@ function renderShopItems(cat) {
 
                 // === [新增] 在 startGame 底部调用后期处理初始化 ===
                 composer = initPostProcessing(renderer, scene, camera);
+                
+                // === [新增] 初始化照片系统 ===
+                photoManager.init(renderer, scene, camera, cats);
+                console.log("📷 照片系统已初始化");
 
                 logToScreen("Game Loop Starting...");
                 animate();
@@ -2024,9 +2057,11 @@ function renderShopItems(cat) {
 
         // === [新增] 全局日记实例与交互函数 ===
         const diaryManager = new DiaryManager(DIARY_CONFIG, updateStatusText);
+        const photoManager = new PhotoManager();
 
         // [新增] 关键修复：把实例挂载到 window，让 HTML 里的 onclick 能找到它
         window.diaryManager = diaryManager; 
+        window.photoManager = photoManager; 
 
         // [修改] window.toggleDiary: 打开时触发 flushPendingEvents
         // [修改] 日记开关逻辑：修正音效播放位置

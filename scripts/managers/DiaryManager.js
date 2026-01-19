@@ -248,6 +248,7 @@ export class DiaryManager {
         const moodMeta = document.getElementById('diary-mood');
         const photoDate = document.getElementById('diary-photo-date');
         const photoWeather = document.getElementById('diary-photo-weather');
+        const photoImg = document.querySelector('.polaroid-photo');
         const entriesContainer = document.getElementById('diary-entries-scroll');
 
         const key = this.formatDateKey(this.viewingDate);
@@ -262,6 +263,19 @@ export class DiaryManager {
 
         if (photoDate) photoDate.innerText = key;
         if (photoWeather) photoWeather.innerText = meta ? meta.weather.split(' ')[1] : '适合睡觉';
+
+        // [新增] 加载照片
+        if (photoImg && window.photoManager) {
+            const photo = window.photoManager.getPhoto(key);
+            if (photo) {
+                photoImg.src = photo;
+                photoImg.style.display = 'block';
+            } else {
+                // 使用占位图
+                photoImg.src = './assets/ui/diary_photo_placeholder_Chrismas.png';
+                photoImg.style.display = 'block';
+            }
+        }
 
         entriesContainer.innerHTML = ''; 
 
