@@ -729,6 +729,62 @@ import * as THREE from 'three';
         window.forceStart = function() { const ls = document.getElementById('loading-screen'); if(ls) ls.style.display = 'none'; if(!scene) startGame(); }
         window.debugAddMoney = function() { updateMoney(100); };
         window.debugResetCat = function() { cats.forEach(c => c.resetCooldown()); updateStatusText("猫咪不再生气了"); };
+        
+        // [新增] 猫咪状态调试函数
+        window.debugCatInfo = function() {
+            console.log("\n========== 猫咪调试信息 ==========");
+            console.log("猫咪数量:", cats.length);
+            
+            cats.forEach((cat, index) => {
+                console.log(`\n--- 猫咪 #${index + 1} ---`);
+                console.log("状态 (state):", cat.state);
+                console.log("位置 (position):", {
+                    x: cat.mesh.position.x.toFixed(2),
+                    y: cat.mesh.position.y.toFixed(2),
+                    z: cat.mesh.position.z.toFixed(2)
+                });
+                console.log("可见性 (visible):", cat.mesh.visible);
+                console.log("在场景中:", scene.children.includes(cat.mesh));
+                console.log("饱食度 (hunger):", cat.stats.hunger);
+                console.log("便便值 (toilet):", cat.stats.toilet);
+                console.log("冷却时间 (cooldown):", cat.cooldown);
+                
+                if (cat.state === 'sleeping') {
+                    console.log("睡眠位置:", cat.sleepTarget ? {
+                        x: cat.sleepTarget.x.toFixed(2),
+                        y: cat.sleepTarget.y.toFixed(2),
+                        z: cat.sleepTarget.z.toFixed(2)
+                    } : "无");
+                    console.log("睡眠家具:", cat.currentSleepFurniture?.userData?.parentClass?.dbItem?.name || "无");
+                }
+                
+                if (cat.state === 'eating') {
+                    console.log("食盆:", cat.targetFoodBowl ? "有" : "无");
+                }
+                
+                // 检查 Mesh 的父级
+                console.log("Mesh 父级:", cat.mesh.parent?.type || "无父级");
+                
+                // 检查动画
+                if (cat.mixer) {
+                    console.log("AnimationMixer 存在:", true);
+                    console.log("当前动作:", cat.currentAction?._clip?.name || "无");
+                } else {
+                    console.log("AnimationMixer 存在:", false);
+                }
+            });
+            
+            console.log("\n========== 场景信息 ==========");
+            console.log("场景子对象数量:", scene.children.length);
+            console.log("相机位置:", {
+                x: camera.position.x.toFixed(2),
+                y: camera.position.y.toFixed(2),
+                z: camera.position.z.toFixed(2)
+            });
+            console.log("================================\n");
+            
+            alert("猫咪调试信息已输出到控制台！\n请按 F12 打开控制台查看详细信息");
+        };
 
         let debugGizmosVisible = false;
         let debugHelpers = [];
