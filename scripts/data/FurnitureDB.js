@@ -21,7 +21,10 @@ export const FURNITURE_DB = [
     { id: 'bed',      type: 'floor', layer: 1, name: '猫窝',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'bed.glb', modelScale: 0.8, canSleep: true, fixBottom: true },
     { id: 'sofa',     type: 'floor', layer: 1, name: '大沙发', price: 150, color: 0xe74c3c, size: {x:3, y:1, z:1},   modelFile: 'sofa.glb', modelScale: 2.0, canSleep: true, fixBottom: true },
     { id: 'ArmChair',     type: 'floor', layer: 1, name: '扶手椅', price: 150, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'ArmChair.glb', modelScale: 1.0, canSleep: true, fixBottom: true },
-    { id: 'ArmChair2',     type: 'floor', layer: 1, name: '绿色椅子', price: 150, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'Chair.glb', modelScale: 1.0, canSleep: true, fixBottom: true },
+    { id: 'ArmChair2',     type: 'floor', layer: 1, name: '绿色椅子', price: 100, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'Chair.glb', modelScale: 0.8, canSleep: true, fixBottom: true },
+    { id: 'TeaSetTable',     type: 'floor', layer: 1, name: '茶台', price: 100, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'TeaSetTable.glb', modelScale: 0.6, canSleep: false, fixBottom: true },
+    { id: 'TelevisionTable',     type: 'floor', layer: 1, name: '电视柜', price: 100, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'TelevisionTable.glb', modelScale: 1.5, canSleep: true, fixBottom: true },
+    { id: 'Folding_Screen',     type: 'floor', layer: 1, name: '屏风', price: 100, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'Folding_Screen.glb', modelScale: 2, canSleep: false, fixBottom: true },
 
     { id: 'cat_tree', type: 'floor', layer: 1, name: '猫爬架', price: 100, color: 0x8e44ad, size: {x:1, y:1.8, z:1},   modelFile: 'cat_tree.glb', modelScale: 1.0 , fixBottom: true},
     { id: 'book_shelf', type: 'floor', layer: 1, name: '书架', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'book_shelf.glb', modelScale: 1.0, fixBottom: true, isSurface: true, surfaceHeight: 2.0 }, 
@@ -93,6 +96,7 @@ export const FURNITURE_DB = [
     { id: 'wall_blue',  type: 'decor', name: '清爽蓝墙', price: 50, color: 0xb3e5fc, decorType: 'wall' },
     { id: 'wall_blueWooden',  type: 'decor', name: '蓝色木墙', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'BlueWooden.jpg' },
     { id: 'MintWallpaper',  type: 'decor', name: '薄荷墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'MintWallpaper.jpg' },
+    { id: 'WoodWallpaper',  type: 'decor', name: '木纹墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall',  textureFile: 'Wallpaper_1.png', wallpaperStyle: 'horizontal', wallpaperUnitWidth: 0.8 },
     { id: 'floor_default', type: 'decor', name: '经典米色', price: 0, color: 0xF5F5DC, decorType: 'floor' },
     { id: 'wall_default',  type: 'decor', name: '经典暖灰', price: 0, color: 0xEBE5D1, decorType: 'wall' },
 ];

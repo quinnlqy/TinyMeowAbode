@@ -55,6 +55,8 @@ import * as THREE from 'three';
 
         const moveKeys = { w: false, a: false, s: false, d: false };
         const loadedModels = {}; 
+        // [关键修复] 禁用 Three.js 全局缓存，避免纹理对象被共享和污染
+        THREE.Cache.enabled = false;
         const textureLoader = new THREE.TextureLoader();
         const gltfLoader = new GLTFLoader();
         const objLoader = new OBJLoader();
@@ -158,7 +160,6 @@ import * as THREE from 'three';
             const files = [];
             files.push({ key: 'cat', path: './assets/models/cat.glb' });
             files.push({ key: 'box', path: './assets/models/cardboardBoxOpen.glb' });
-            files.push({ key: 'wall', path: './assets/models/Wall1.glb' }); // [新增] 墙壁模型
             FURNITURE_DB.forEach(i => { 
                 if(i.modelFile) files.push({ key: i.id, path: './assets/models/'+i.modelFile }); 
                 if(i.fullModelFile) files.push({ key: i.fullModelFile, path: './assets/models/'+i.fullModelFile });
@@ -196,14 +197,120 @@ import * as THREE from 'three';
 
         // [修复] 补回 Decor 函数
         function applyDecorVisuals(item) {
+            console.log('[应用装饰] ID:', item.id, 'Type:', item.decorType, 'Texture:', item.textureFile, 'Style:', item.wallpaperStyle, 'UnitWidth:', item.wallpaperUnitWidth);
             const setMaterial = (mesh, config) => {
+                // [关键修复] 确保每个 mesh 有独立的材质对象
+                if (!mesh._hasOwnMaterial) {
+                    mesh.material = mesh.material.clone();
+                    mesh._hasOwnMaterial = true;
+                }
+                
                 if (config.textureFile) {
-                    textureLoader.load('./assets/textures/' + config.textureFile, (tex) => {
-                        tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-                        if (config.decorType === 'floor') tex.repeat.set(4, 4); else tex.repeat.set(2, 1);
-                        mesh.material.map = tex; mesh.material.color.setHex(0xffffff); mesh.material.needsUpdate = true;
+                    // [关键修复] 为每次加载创建独立的 TextureLoader + 唯一URL，彻底避免任何缓存
+                    const independentLoader = new THREE.TextureLoader();
+                    const uniqueId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    const textureUrl = './assets/textures/' + config.textureFile + '?_=' + uniqueId;
+                    independentLoader.load(textureUrl, (tex) => {
+                        // 为调试添加 mesh 标识
+                        const meshId = mesh.name || mesh.uuid.substring(0, 8);
+                        console.log('[纹理加载] Mesh:', meshId, 'URL:', textureUrl);
+                        
+                        // 不需要克隆，因为每次都是独立加载的新纹理
+                        tex.repeat = new THREE.Vector2(1, 1);
+                        tex.offset = new THREE.Vector2(0, 0);
+                        tex.needsUpdate = true;
+                        
+                        tex.colorSpace = THREE.SRGBColorSpace; 
+                        tex.wrapS = THREE.RepeatWrapping; 
+                        tex.wrapT = THREE.RepeatWrapping;
+                        
+                        if (config.decorType === 'floor') {
+                            // 地板：正常平铺
+                            tex.repeat.set(4, 4);
+                        } else {
+                            // 墙纸：根据 wallpaperStyle 配置决定平铺方式
+                            console.log('[墙纸调试] config.wallpaperStyle =', config.wallpaperStyle);
+                            
+                            if (config.wallpaperStyle === 'horizontal') {
+                                // 横向平铺模式（竖条墙纸横向重复）
+                                
+                                const wallHeight = 3.2; // 墙壁实际高度（米）
+                                
+                                // 获取墙壁宽度
+                                let wallWidth = 5; // 默认宽度
+                                
+                                // 计算墙的实际宽度（考虑缩放和旋转）
+                                mesh.geometry.computeBoundingBox();
+                                const bbox = mesh.geometry.boundingBox;
+                                if (bbox) {
+                                    const bboxWidth = bbox.max.x - bbox.min.x;
+                                    const bboxDepth = bbox.max.z - bbox.min.z;
+                                    const bboxHeight = bbox.max.y - bbox.min.y;
+                                    
+                                    // 获取世界缩放
+                                    const worldScale = new THREE.Vector3();
+                                    mesh.getWorldScale(worldScale);
+                                    
+                                    // 计算实际尺寸
+                                    const actualWidth = bboxWidth * worldScale.x;
+                                    const actualDepth = bboxDepth * worldScale.z;
+                                    
+                                    // 墙的宽度是 X 和 Z 中较大的那个（因为墙可能旋转）
+                                    wallWidth = Math.max(actualWidth, actualDepth);
+                                    
+                                    console.log('[墙尺寸] bbox:', bboxWidth.toFixed(2), 'x', bboxDepth.toFixed(2), 
+                                                'scale:', worldScale.x.toFixed(2), 'x', worldScale.z.toFixed(2),
+                                                '=> wallWidth:', wallWidth.toFixed(2));
+                                    
+                                    if (wallWidth < 1) {
+                                        wallWidth = 5;
+                                    }
+                                }
+                                
+                                const texWidth = tex.image.width;
+                                const texHeight = tex.image.height;
+                                
+                                const verticalRepeat = 1;
+                                let horizontalRepeat;
+                                
+                                // 如果指定了单元宽度，使用它来计算重复次数
+                                if (config.wallpaperUnitWidth && config.wallpaperUnitWidth > 0) {
+                                    horizontalRepeat = wallWidth / config.wallpaperUnitWidth;
+                                } else {
+                                    // 否则根据贴图宽高比自动计算
+                                    const texAspectRatio = texWidth / texHeight;
+                                    const texWidthIn3D = wallHeight * texAspectRatio;
+                                    horizontalRepeat = wallWidth / texWidthIn3D;
+                                }
+                                
+                                if (!horizontalRepeat || horizontalRepeat <= 0 || !isFinite(horizontalRepeat)) {
+                                    console.warn('[墙纸] 计算异常，使用默认值');
+                                    horizontalRepeat = 6;
+                                }
+                                
+                                console.log('[墙纸] Mesh:', mesh.name || mesh.uuid.substring(0, 8), '贴图:', texWidth, 'x', texHeight, '墙宽:', wallWidth.toFixed(2), 'm, 单元宽:', config.wallpaperUnitWidth || 'auto', 'repeat:', horizontalRepeat.toFixed(2), 'x', verticalRepeat);
+                                
+                                tex.repeat.set(horizontalRepeat, verticalRepeat);
+                            } else if (config.wallpaperStyle === 'stretch') {
+                                // 拉伸模式：整张贴图拉伸填充墙面
+                                console.log('[墙纸] 使用拉伸模式');
+                                tex.repeat.set(1, 1);
+                            } else {
+                                // 默认模式：双向平铺
+                                console.log('[墙纸] 使用默认平铺模式 2x1');
+                                tex.repeat.set(2, 1);
+                            }
+                        }
+                        
+                        mesh.material.map = tex; 
+                        mesh.material.color.setHex(0xffffff); 
+                        mesh.material.needsUpdate = true;
                     }, undefined, (err) => {console.error("Failed to load texture:", config.textureFile, err);});
-                } else { mesh.material.map = null; mesh.material.color.setHex(config.color); mesh.material.needsUpdate = true; }
+                } else { 
+                    mesh.material.map = null; 
+                    mesh.material.color.setHex(config.color); 
+                    mesh.material.needsUpdate = true; 
+                }
             };
             if (item.decorType === 'floor') setMaterial(floorPlane, item);
             else if (item.decorType === 'wall') wallGroup.forEach(wall => setMaterial(wall, item));
@@ -689,6 +796,41 @@ window.toggleWeather = function() {
             let nextIdx = (currentIdx + 1) % types.length;
             weatherSystem.setWeather(types[nextIdx]);
         };
+
+        // [新增] 天气按钮循环切换函数
+        window.cycleWeather = function() {
+            if (!weatherSystem) return;
+            
+            const weatherTypes = ['clear', 'rain', 'snow'];
+            const weatherIcons = {
+                'clear': './assets/ui/weather/sunny.png',
+                'rain': './assets/ui/weather/rainning.png',
+                'snow': './assets/ui/weather/snow.png'
+            };
+            const weatherNames = {
+                'clear': '晴天',
+                'rain': '雨天',
+                'snow': '雪天'
+            };
+            
+            // 循环切换天气
+            let currentIdx = weatherTypes.indexOf(weatherSystem.currentWeather);
+            let nextIdx = (currentIdx + 1) % weatherTypes.length;
+            let nextWeather = weatherTypes[nextIdx];
+            
+            // 更新天气系统
+            weatherSystem.setWeather(nextWeather);
+            
+            // 更新按钮图标
+            const iconImg = document.getElementById('weather-btn-icon');
+            if (iconImg) {
+                iconImg.src = weatherIcons[nextWeather];
+            }
+            
+            // 显示提示
+            updateStatusText('天气: ' + weatherNames[nextWeather]);
+        };
+
 function renderShopItems(cat) {
             const c = document.getElementById('items-scroll'); 
             c.innerHTML = ''; 
@@ -741,17 +883,6 @@ function renderShopItems(cat) {
                     allItems = [];
             }
             
-            // === 对于装修类（wallpaper/flooring），将当前使用的置顶 ===
-            if (cat === 'wallpaper' || cat === 'flooring') {
-                allItems.sort((a, b) => {
-                    const aActive = activeDecorId[a.decorType] === a.id;
-                    const bActive = activeDecorId[b.decorType] === b.id;
-                    if (aActive && !bActive) return -1;  // a在前
-                    if (!aActive && bActive) return 1;   // b在前
-                    return 0; // 保持原顺序
-                });
-            }
-            
             allItems.forEach(item => {
                 
                 // 创建容器
@@ -800,35 +931,51 @@ function renderShopItems(cat) {
                         applyDecorVisuals(item);
                     }
                     
-                    // 创建或更新tooltip
+                    // 创建或更新tooltip（木质背景风格，固定在家具上方）
                     let tooltip = document.getElementById('furniture-tooltip');
                     if (!tooltip) {
                         tooltip = document.createElement('div');
                         tooltip.id = 'furniture-tooltip';
                         tooltip.style.cssText = `
                             position: fixed;
-                            background: rgba(0, 0, 0, 0.8);
-                            color: white;
-                            padding: 8px 12px;
-                            border-radius: 6px;
-                            font-size: 14px;
+                            background: url('../assets/ui/FurnitureName_Bg.png') no-repeat center/contain;
+                            color: #5d4037;
+                            width: 120px;
+                            height: 32px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 12px;
+                            font-weight: 600;
+                            font-family: 'Microsoft YaHei', 'Kalam', sans-serif;
+                            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
                             pointer-events: none;
                             z-index: 10000;
                             white-space: nowrap;
-                            font-family: 'Kalam', cursive;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            padding-bottom: 6px;
                         `;
                         document.body.appendChild(tooltip);
                     }
                     tooltip.textContent = item.name;
-                    tooltip.style.display = 'block';
+                    tooltip.style.display = 'flex';
                     
-                    // 跟随鼠标移动
-                    const moveHandler = (moveEvent) => {
-                        tooltip.style.left = (moveEvent.clientX + 15) + 'px';
-                        tooltip.style.top = (moveEvent.clientY + 15) + 'px';
+                    // 计算tooltip位置（固定在卡片上方中央）
+                    const updateTooltipPosition = () => {
+                        const rect = card.getBoundingClientRect();
+                        tooltip.style.left = (rect.left + rect.width / 2 - 60) + 'px'; // 60是tooltip宽度的一半
+                        tooltip.style.top = (rect.top - 40) + 'px'; // 在卡片上方40px
                     };
-                    card.onmousemove = moveHandler;
-                    moveHandler(e); // 初始位置
+                    updateTooltipPosition();
+                    
+                    // 监听滚动事件以更新位置
+                    const scrollContainer = document.getElementById('items-scroll');
+                    const scrollHandler = updateTooltipPosition;
+                    scrollContainer.addEventListener('scroll', scrollHandler);
+                    
+                    // 保存scrollHandler以便后续移除
+                    card._tooltipScrollHandler = scrollHandler
                 };
                 
                 card.onmouseleave = function() {
@@ -842,7 +989,13 @@ function renderShopItems(cat) {
                     if (tooltip) {
                         tooltip.style.display = 'none';
                     }
-                    card.onmousemove = null;
+                    
+                    // 移除滚动监听
+                    const scrollContainer = document.getElementById('items-scroll');
+                    if (card._tooltipScrollHandler) {
+                        scrollContainer.removeEventListener('scroll', card._tooltipScrollHandler);
+                        card._tooltipScrollHandler = null;
+                    }
                 };
 
                 // 1. 展示台背景 (Shelf) - 仅非装饰类显示台子，或者都显示，看你喜好
@@ -1654,59 +1807,24 @@ function renderShopItems(cat) {
                 //显示网格
                 //const gh=new THREE.GridHelper(12,24,0xffffff,0xffffff); gh.position.y=0.01; gh.material.opacity=0.2; gh.material.transparent=true; scene.add(gh);
                 
-                // === [重构] 使用 GLB 模型替代原来的 Box 墙壁 ===
-                if (loadedModels['wall']) {
-                    // 克隆并处理模型
-                    const wallModel = loadedModels['wall'].scene.clone();
-                    wallModel.traverse(sanitizeMaterial);
-                    
-                    // 调整模型位置和尺寸
-                    // Wall1.glb 是 L 型，包含左墙和后墙
-                    // 根据你的场景尺寸调整缩放
-                    const wallScale = 1.0; // 可能需要调整
-                    wallModel.scale.set(wallScale, wallScale, wallScale);
-                    
-                    // 定位墙壁（需要根据实际模型原点调整）
-                    // 假设模型原点在角落，我们移动到场景的后左角
-                    wallModel.position.set(-5, 0, -5);
-                    
-                    wallModel.receiveShadow = true;
-                    wallModel.castShadow = true;
-                    
-                    scene.add(wallModel);
-                    
-                    // 收集所有墙壁网格（用于材质替换）
-                    wallGroup = [];
-                    wallModel.traverse((child) => {
-                        if (child.isMesh) {
-                            child.receiveShadow = true;
-                            child.castShadow = true;
-                            wallGroup.push(child);
-                            obstacles.push(child); // 加入碰撞检测
-                        }
-                    });
-                    
-                    logToScreen("Wall model loaded successfully");
-                } else {
-                    // 降级方案：如果模型加载失败，使用原来的 Box 墙壁
-                    const wm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.wall.color});
-                    const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3,0.5), wm); 
-                    w1.position.set(0,1.5,-5.25); 
-                    w1.receiveShadow=true; 
-                    w1.castShadow=true; 
-                    scene.add(w1); 
-                    obstacles.push(w1);
-                    
-                    const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3,10), wm); 
-                    w2.position.set(-5.25,1.5,0); 
-                    w2.receiveShadow=true; 
-                    w2.castShadow=true; 
-                    scene.add(w2); 
-                    obstacles.push(w2);
-                    
-                    wallGroup = [w1, w2];
-                    logToScreen("Using fallback box walls", 'warn');
-                }
+                const wm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.wall.color});
+                // 后墙：宽10, 高3.2, 厚0.5
+                const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3.2,0.5), wm); 
+                w1.position.set(0,1.6,-5.25); // Y位置 = 高度/2 = 1.6
+                w1.receiveShadow=true; 
+                w1.castShadow=true; 
+                scene.add(w1); 
+                obstacles.push(w1);
+                
+                // 左墙：厚0.5, 高3.2, 宽10
+                const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3.2,10), wm); 
+                w2.position.set(-5.25,1.6,0); // Y位置 = 高度/2 = 1.6
+                w2.receiveShadow=true; 
+                w2.castShadow=true; 
+                scene.add(w2); 
+                obstacles.push(w2);
+                
+                wallGroup = [w1, w2];
                 
                 logToScreen("Spawning Cat...");
                 

@@ -512,6 +512,20 @@ export class WeatherSystem {
     }
     
     updateSkyColor(hour, isInstant = false) { 
+        // [新增] 阴天颜色方案（雨天/雪天）
+        const cloudyDayTop = new THREE.Color(0x8899aa); // 灰蓝色天空
+        const cloudyDayBot = new THREE.Color(0xc0c8d0); // 浅灰色
+        
+        const cloudyDawnTop = new THREE.Color(0x6a7a8a);
+        const cloudyDawnBot = new THREE.Color(0xb0b8c0);
+        
+        const cloudyDuskTop = new THREE.Color(0x4a5568);
+        const cloudyDuskBot = new THREE.Color(0x8090a0);
+        
+        const cloudyNightTop = new THREE.Color(0x1a1a28);
+        const cloudyNightBot = new THREE.Color(0x3a3a50);
+        
+        // 晴天颜色方案
         const dawnTop = new THREE.Color(0x607d8b);
         const dawnBot = new THREE.Color(0xffe0b2);
         
@@ -528,15 +542,42 @@ export class WeatherSystem {
         let b = this.skyMat.uniforms.bottomColor.value;
         
         const lerpFactor = isInstant ? 1.0 : 0.01;
+        
+        // [修改] 根据天气类型选择颜色
+        const isCloudy = (this.currentWeather === 'rain' || this.currentWeather === 'snow');
 
         if (hour >= 5 && hour < 9) { 
-            t.lerp(dawnTop, lerpFactor); b.lerp(dawnBot, lerpFactor);
+            if (isCloudy) {
+                t.lerp(cloudyDawnTop, lerpFactor); 
+                b.lerp(cloudyDawnBot, lerpFactor);
+            } else {
+                t.lerp(dawnTop, lerpFactor); 
+                b.lerp(dawnBot, lerpFactor);
+            }
         } else if (hour >= 9 && hour < 17) { 
-            t.lerp(dayTop, lerpFactor); b.lerp(dayBot, lerpFactor);
+            if (isCloudy) {
+                t.lerp(cloudyDayTop, lerpFactor); 
+                b.lerp(cloudyDayBot, lerpFactor);
+            } else {
+                t.lerp(dayTop, lerpFactor); 
+                b.lerp(dayBot, lerpFactor);
+            }
         } else if (hour >= 17 && hour < 20) { 
-            t.lerp(duskTop, lerpFactor); b.lerp(duskBot, lerpFactor);
+            if (isCloudy) {
+                t.lerp(cloudyDuskTop, lerpFactor); 
+                b.lerp(cloudyDuskBot, lerpFactor);
+            } else {
+                t.lerp(duskTop, lerpFactor); 
+                b.lerp(duskBot, lerpFactor);
+            }
         } else { 
-            t.lerp(nightTop, lerpFactor); b.lerp(nightBot, lerpFactor);
+            if (isCloudy) {
+                t.lerp(cloudyNightTop, lerpFactor); 
+                b.lerp(cloudyNightBot, lerpFactor);
+            } else {
+                t.lerp(nightTop, lerpFactor); 
+                b.lerp(nightBot, lerpFactor);
+            }
         }
 
         this.windowMaterials.forEach(mat => {
