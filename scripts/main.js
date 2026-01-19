@@ -730,6 +730,21 @@ import * as THREE from 'three';
         window.debugAddMoney = function() { updateMoney(100); };
         window.debugResetCat = function() { cats.forEach(c => c.resetCooldown()); updateStatusText("猫咪不再生气了"); };
         
+        // [新增] 强制猫咪上厕所的GM功能
+        window.debugForceToilet = function() {
+            cats.forEach(cat => {
+                // 将便便值设为0，触发急迫状态
+                cat.stats.toilet = 0;
+                // 如果猫咪在睡觉或其他状态，打断它
+                if (cat.state === 'sleeping' || cat.state === 'eating') {
+                    cat.state = 'idle';
+                    cat.timer = 0;
+                }
+                console.log("已强制猫咪进入急迫状态 (toilet = 0)");
+            });
+            updateStatusText("🚽 猫咪急需上厕所！");
+        };
+        
         // [新增] 猫咪状态调试函数
         window.debugCatInfo = function() {
             console.log("\n========== 猫咪调试信息 ==========");

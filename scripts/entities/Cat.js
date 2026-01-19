@@ -117,7 +117,8 @@ export class Cat {
         const floorPlane = GameContext.floorPlane;
         const placedFurniture = GameContext.placedFurniture;
         
-        if (this.state !== 'jumping') {
+        // [修复] 在 pooping 状态下，不执行地面检测，保持猫砂盆高度
+        if (this.state !== 'jumping' && this.state !== 'pooping') {
             const rayOrigin = this.mesh.position.clone(); rayOrigin.y = 5; this.downRay.set(rayOrigin, new THREE.Vector3(0,-1,0));
             const hitCandidates = [floorPlane, ...placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.dbItem && f.userData.parentClass.dbItem.layer === 1 && !f.userData.parentClass.isBox)];
             const hits = this.downRay.intersectObjects(hitCandidates, true); let targetY = 0; if(hits.length > 0) targetY = hits[0].point.y;
@@ -645,7 +646,7 @@ export class Cat {
             
             this.state = 'pooping'; 
             
-            const litterBoxHeight = 0.7;
+            const litterBoxHeight = 0.25; // 猫砂盆高度，可根据模型调整
             
             this.mesh.position.copy(this.targetFurniture.position);
             this.mesh.position.y = litterBoxHeight; 
