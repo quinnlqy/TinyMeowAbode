@@ -82,7 +82,6 @@ export const FURNITURE_DB = [
     { id: 'curtain', type: 'wall', layer: 1, name: '窗帘', price: 80, color: 0xFFFFFF, size: {x:2.0, y:2.0, z:0.5}, modelFile: 'curtain.glb', modelScale: 1.5, autoCenter: true, allowOverlap: true },
     { id: 'wall_star', type: 'wall', layer: 1, name: '星星挂饰', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'WallDecorate_Star.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },
     { id: 'ChrismaxSock', type: 'wall', layer: 1, name: '圣诞袜', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'ChrismaxSock.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },
-    { id: 'CorkBorad', type: 'wall', layer: 1, name: '墙壁装饰', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'CorkBorad.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },
   
     { id: 'window',   type: 'wall',  layer: 1, name: '大窗', price: 120, color: 0x87CEEB, size: {x:1.8, y:1.8, z:0.2}, light: true, lightType: 'spot', modelFile: 'window_large.glb', autoCenter: true, modelScale: 1, manualOffset: { x: 0, y: 0, z: 0 } },
     { id: 'window2', type: 'wall',  layer: 1, name: '窗2', price: 120, color: 0x87CEEB, size: {x:1.8, y:2, z:0.2}, light: true, lightType: 'spot', modelFile: 'Window2.glb', modelScale: 1, autoCenter: true },

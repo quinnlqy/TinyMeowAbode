@@ -67,7 +67,7 @@ import * as THREE from 'three';
         let inputManager = null;
         
         const obstacles = []; const placedFurniture = []; const cats = []; 
-        let heartScore = 500; let currentCategory = 'floor'; let activeDecorId = { floor: null, wall: null }; let skyPanels = []; 
+        let heartScore = 500; let currentCategory = 'furniture'; let activeDecorId = { floor: null, wall: null }; let skyPanels = []; 
         let pendingInteraction = null;
         let draggingCat = null; 
 
@@ -158,6 +158,7 @@ import * as THREE from 'three';
             const files = [];
             files.push({ key: 'cat', path: './assets/models/cat.glb' });
             files.push({ key: 'box', path: './assets/models/cardboardBoxOpen.glb' });
+            files.push({ key: 'wall', path: './assets/models/Wall1.glb' }); // [新增] 墙壁模型
             FURNITURE_DB.forEach(i => { 
                 if(i.modelFile) files.push({ key: i.id, path: './assets/models/'+i.modelFile }); 
                 if(i.fullModelFile) files.push({ key: i.fullModelFile, path: './assets/models/'+i.fullModelFile });
@@ -604,12 +605,18 @@ import * as THREE from 'three';
             
             // [修改] 切换 Tab 的 active 样式
             const tabs = document.querySelectorAll('.shop-tab');
-            const catMap = { 'floor': 0, 'small': 1, 'wall': 2, 'decor': 3 };
+            const catMap = { 'furniture': 0, 'small': 1, 'wall': 2, 'wallpaper': 3, 'flooring': 4, 'rug': 5 };
             
             tabs.forEach(t => t.classList.remove('active'));
             if (tabs[catMap[cat]]) tabs[catMap[cat]].classList.add('active');
             
             renderShopItems(cat);
+            
+            // 切换分页时，滚动回开头
+            const container = document.getElementById('items-scroll');
+            if (container) {
+                container.scrollLeft = 0;
+            }
         };
         
         window.forceStart = function() { const ls = document.getElementById('loading-screen'); if(ls) ls.style.display = 'none'; if(!scene) startGame(); }
@@ -686,14 +693,91 @@ function renderShopItems(cat) {
             const c = document.getElementById('items-scroll'); 
             c.innerHTML = ''; 
             
-            let typeFilter = cat; 
-            FURNITURE_DB.filter(i => (i.type === typeFilter || (typeFilter === 'floor' && i.type === 'functional'))).forEach(item => {
+            let allItems = [];
+            
+            // 根据新的分类筛选商品
+            switch(cat) {
+                case 'furniture':
+                    // 大型家具（floor类型，layer=1，排除地毯和功能性家具）
+                    allItems = FURNITURE_DB.filter(i => 
+                        i.type === 'floor' && 
+                        i.layer === 1 && 
+                        !i.id.includes('rug')
+                    );
+                    break;
+                case 'small':
+                    // 小物件（small类型）+ 功能性家具（猫砂盆、食盆）
+                    allItems = FURNITURE_DB.filter(i => 
+                        i.type === 'small' || 
+                        i.type === 'functional'
+                    );
+                    break;
+                case 'wall':
+                    // 壁挂物（wall类型）
+                    allItems = FURNITURE_DB.filter(i => i.type === 'wall');
+                    break;
+                case 'wallpaper':
+                    // 墙纸（decor类型，decorType='wall'）
+                    allItems = FURNITURE_DB.filter(i => 
+                        i.type === 'decor' && 
+                        i.decorType === 'wall'
+                    );
+                    break;
+                case 'flooring':
+                    // 地板（decor类型，decorType='floor'，排除地毯）
+                    allItems = FURNITURE_DB.filter(i => 
+                        i.type === 'decor' && 
+                        i.decorType === 'floor'
+                    );
+                    break;
+                case 'rug':
+                    // 地毯（floor类型，layer=0，或id包含rug）
+                    allItems = FURNITURE_DB.filter(i => 
+                        (i.type === 'floor' && i.layer === 0) || 
+                        i.id.includes('rug')
+                    );
+                    break;
+                default:
+                    allItems = [];
+            }
+            
+            // === 对于装修类（wallpaper/flooring），将当前使用的置顶 ===
+            if (cat === 'wallpaper' || cat === 'flooring') {
+                allItems.sort((a, b) => {
+                    const aActive = activeDecorId[a.decorType] === a.id;
+                    const bActive = activeDecorId[b.decorType] === b.id;
+                    if (aActive && !bActive) return -1;  // a在前
+                    if (!aActive && bActive) return 1;   // b在前
+                    return 0; // 保持原顺序
+                });
+            }
+            
+            allItems.forEach(item => {
                 
                 // 创建容器
                 const card = document.createElement('div');
                 card.className = 'item-card';
                 if (heartScore < item.price) card.classList.add('disabled');
-                if (item.type === 'decor' && activeDecorId[item.decorType] === item.id) card.classList.add('selected');
+                
+                // === 为装修类添加选中状态 ===
+                if (item.type === 'decor' && activeDecorId[item.decorType] === item.id) {
+                    card.classList.add('selected');
+                    
+                    // 添加选中图标
+                    const selectedIcon = document.createElement('img');
+                    selectedIcon.src = './assets/ui/selected.png';
+                    selectedIcon.className = 'selected-icon';
+                    selectedIcon.style.cssText = `
+                        position: absolute;
+                        top: 8px;
+                        right: 8px;
+                        width: 32px;
+                        height: 32px;
+                        pointer-events: none;
+                        z-index: 10;
+                    `;
+                    card.appendChild(selectedIcon);
+                }
 
                 // 点击事件
                 card.onclick = (e) => { 
@@ -702,11 +786,64 @@ function renderShopItems(cat) {
                         startNewPlacement(item.id); 
                     } 
                 };
+                
                 // 装饰预览事件
                 if (item.type === 'decor') { 
                     card.onmouseenter = () => applyDecorVisuals(item); 
                     card.onmouseleave = () => restoreDecorState(item.decorType); 
                 }
+                
+                // === 鼠标悬浮显示家具名称 ===
+                card.onmouseenter = function(e) {
+                    // 如果是装修类，先执行预览
+                    if (item.type === 'decor') {
+                        applyDecorVisuals(item);
+                    }
+                    
+                    // 创建或更新tooltip
+                    let tooltip = document.getElementById('furniture-tooltip');
+                    if (!tooltip) {
+                        tooltip = document.createElement('div');
+                        tooltip.id = 'furniture-tooltip';
+                        tooltip.style.cssText = `
+                            position: fixed;
+                            background: rgba(0, 0, 0, 0.8);
+                            color: white;
+                            padding: 8px 12px;
+                            border-radius: 6px;
+                            font-size: 14px;
+                            pointer-events: none;
+                            z-index: 10000;
+                            white-space: nowrap;
+                            font-family: 'Kalam', cursive;
+                        `;
+                        document.body.appendChild(tooltip);
+                    }
+                    tooltip.textContent = item.name;
+                    tooltip.style.display = 'block';
+                    
+                    // 跟随鼠标移动
+                    const moveHandler = (moveEvent) => {
+                        tooltip.style.left = (moveEvent.clientX + 15) + 'px';
+                        tooltip.style.top = (moveEvent.clientY + 15) + 'px';
+                    };
+                    card.onmousemove = moveHandler;
+                    moveHandler(e); // 初始位置
+                };
+                
+                card.onmouseleave = function() {
+                    // 如果是装修类，恢复状态
+                    if (item.type === 'decor') {
+                        restoreDecorState(item.decorType);
+                    }
+                    
+                    // 隐藏tooltip
+                    const tooltip = document.getElementById('furniture-tooltip');
+                    if (tooltip) {
+                        tooltip.style.display = 'none';
+                    }
+                    card.onmousemove = null;
+                };
 
                 // 1. 展示台背景 (Shelf) - 仅非装饰类显示台子，或者都显示，看你喜好
                 // 假设墙纸也放在台子上卖
@@ -772,7 +909,8 @@ function renderShopItems(cat) {
             const type = item.decorType;
             if (activeDecorId[type] === item.id) { activeDecorId[type] = null; restoreDecorState(type); updateStatusText("已恢复默认样式"); } 
             else { if (heartScore >= item.price) { updateMoney(-item.price); activeDecorId[type] = item.id; applyDecorVisuals(item); updateStatusText("已装修: " + item.name); } else { alert("金钱不足！"); } }
-            renderShopItems('decor'); 
+            // 重新渲染当前分类（修复：根据 decorType 确定当前分类）
+            renderShopItems(type === 'wall' ? 'wallpaper' : 'flooring'); 
         }
 
         function createGhost() {
@@ -1275,7 +1413,34 @@ function renderShopItems(cat) {
             if (moveKeys.s) displacement.sub(forward.multiplyScalar(moveSpeed));
             if (moveKeys.d) displacement.add(right.multiplyScalar(moveSpeed));
             if (moveKeys.a) displacement.sub(right.multiplyScalar(moveSpeed));
-            camera.position.add(displacement); controls.target.add(displacement);
+            
+            // 计算新的目标位置
+            const newTargetX = controls.target.x + displacement.x;
+            const newTargetZ = controls.target.z + displacement.z;
+            const newTargetY = controls.target.y + displacement.y;
+            
+            // === WASD移动范围限制配置 ===
+            const panOffset = -2;       // 初始中心点
+            const maxOffsetX = 8;      // X轴最大偏移距离
+            const maxOffsetZ = 8;      // Z轴最大偏移距离
+            const minY = -5;            // 最低高度
+            const maxY = 8;            // 最高高度
+            
+            // 限制焦点的移动范围
+            const clampedTargetX = Math.max(panOffset - maxOffsetX, Math.min(panOffset + maxOffsetX, newTargetX));
+            const clampedTargetZ = Math.max(panOffset - maxOffsetZ, Math.min(panOffset + maxOffsetZ, newTargetZ));
+            const clampedTargetY = Math.max(minY, Math.min(maxY, newTargetY));
+            
+            // 计算实际可以移动的距离
+            const actualDisplacement = new THREE.Vector3(
+                clampedTargetX - controls.target.x,
+                clampedTargetY - controls.target.y,
+                clampedTargetZ - controls.target.z
+            );
+            
+            // 应用位移
+            camera.position.add(actualDisplacement); 
+            controls.target.add(actualDisplacement);
         }
 
         function animate() {
@@ -1297,7 +1462,7 @@ function renderShopItems(cat) {
             try {
                 logToScreen("Initializing Renderer & Scene...");
                 setDomText('heart-text-display', heartScore);
-                window.switchCategory('floor'); 
+                window.switchCategory('furniture'); 
                 
                 renderer = new THREE.WebGLRenderer({ 
                     antialias: false, // 关闭自带抗锯齿，我们将使用后期处理(SMAA)来抗锯齿，性能更好且兼容AO
@@ -1351,7 +1516,17 @@ function renderShopItems(cat) {
 
                 controls = new OrbitControls(camera, renderer.domElement); 
                 controls.enableDamping = true; 
-                controls.maxPolarAngle = Math.PI/2.1;
+                
+                // 限制垂直旋转角度
+                controls.minPolarAngle = Math.PI / 8;   // 最高视角（不能太俯视）
+                controls.maxPolarAngle = Math.PI / 2.1; // 最低视角（不能太平）
+                
+                // 限制水平旋转角度（以初始角度为中心，左右各60度）
+                // 初始角度约为 0，所以范围是 -105度 到 15度
+                const initialAzimuth = 0; // 初始方位角
+                const azimuthRange = Math.PI / 3;     // 60度 = π/3
+                controls.minAzimuthAngle = initialAzimuth ; // 左转60度
+                controls.maxAzimuthAngle = initialAzimuth + Math.PI / 2; // 右转60度
 
                 // [关键] 设置控制器的默认焦点，否则它会自动弹回 (0,0,0)
                 controls.target.set(panOffset, 0, panOffset);
@@ -1372,7 +1547,11 @@ function renderShopItems(cat) {
                         isTimeAuto = false; 
                         visualHour = parseFloat(e.target.value);
                         // 变灰，表示离开了自动模式
-                        if(timeResetBtn) timeResetBtn.style.color = '#999'; 
+                        if(timeResetBtn) timeResetBtn.style.color = '#999';
+                        // 即时更新天气系统
+                        if (weatherSystem) {
+                            weatherSystem.setTimeInstant(visualHour);
+                        }
                     });
                 }
 
@@ -1475,10 +1654,59 @@ function renderShopItems(cat) {
                 //显示网格
                 //const gh=new THREE.GridHelper(12,24,0xffffff,0xffffff); gh.position.y=0.01; gh.material.opacity=0.2; gh.material.transparent=true; scene.add(gh);
                 
-                const wm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.wall.color});
-                const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3,0.5), wm); w1.position.set(0,1.5,-5.25); w1.receiveShadow=true; w1.castShadow=true; scene.add(w1); obstacles.push(w1);
-                const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3,10), wm); w2.position.set(-5.25,1.5,0); w2.receiveShadow=true; w2.castShadow=true; scene.add(w2); obstacles.push(w2);
-                wallGroup = [w1, w2];
+                // === [重构] 使用 GLB 模型替代原来的 Box 墙壁 ===
+                if (loadedModels['wall']) {
+                    // 克隆并处理模型
+                    const wallModel = loadedModels['wall'].scene.clone();
+                    wallModel.traverse(sanitizeMaterial);
+                    
+                    // 调整模型位置和尺寸
+                    // Wall1.glb 是 L 型，包含左墙和后墙
+                    // 根据你的场景尺寸调整缩放
+                    const wallScale = 1.0; // 可能需要调整
+                    wallModel.scale.set(wallScale, wallScale, wallScale);
+                    
+                    // 定位墙壁（需要根据实际模型原点调整）
+                    // 假设模型原点在角落，我们移动到场景的后左角
+                    wallModel.position.set(-5, 0, -5);
+                    
+                    wallModel.receiveShadow = true;
+                    wallModel.castShadow = true;
+                    
+                    scene.add(wallModel);
+                    
+                    // 收集所有墙壁网格（用于材质替换）
+                    wallGroup = [];
+                    wallModel.traverse((child) => {
+                        if (child.isMesh) {
+                            child.receiveShadow = true;
+                            child.castShadow = true;
+                            wallGroup.push(child);
+                            obstacles.push(child); // 加入碰撞检测
+                        }
+                    });
+                    
+                    logToScreen("Wall model loaded successfully");
+                } else {
+                    // 降级方案：如果模型加载失败，使用原来的 Box 墙壁
+                    const wm=new THREE.MeshStandardMaterial({color:DEFAULT_DECOR.wall.color});
+                    const w1=new THREE.Mesh(new THREE.BoxGeometry(10,3,0.5), wm); 
+                    w1.position.set(0,1.5,-5.25); 
+                    w1.receiveShadow=true; 
+                    w1.castShadow=true; 
+                    scene.add(w1); 
+                    obstacles.push(w1);
+                    
+                    const w2=new THREE.Mesh(new THREE.BoxGeometry(0.5,3,10), wm); 
+                    w2.position.set(-5.25,1.5,0); 
+                    w2.receiveShadow=true; 
+                    w2.castShadow=true; 
+                    scene.add(w2); 
+                    obstacles.push(w2);
+                    
+                    wallGroup = [w1, w2];
+                    logToScreen("Using fallback box walls", 'warn');
+                }
                 
                 logToScreen("Spawning Cat...");
                 
@@ -1752,6 +1980,7 @@ function renderShopItems(cat) {
                 e.preventDefault(); // 防止选中文字
                 thumb.dataset.isDragging = 'true';
                 thumb.style.transition = 'none'; // 拖拽时要实时跟手，关掉动画
+                thumb.style.cursor = 'grabbing';
 
                 const startX = e.clientX;
                 const startLeft = parseFloat(thumb.style.left || 0);
@@ -1780,10 +2009,21 @@ function renderShopItems(cat) {
                 // 鼠标松开，取消监听
                 document.onmouseup = function() {
                     thumb.dataset.isDragging = 'false';
+                    thumb.style.cursor = 'grab';
                     document.onmousemove = null;
                     document.onmouseup = null;
                 };
             };
+            
+            // === 3. 添加鼠标滚轮支持（提升滑动流畅度）===
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                // 增加滚动速度，让滑动更灵敏
+                container.scrollLeft += e.deltaY * 2; // 乘以2让滚动更快
+            }, { passive: false });
+            
+            // 设置初始鼠标样式
+            thumb.style.cursor = 'grab';
 
             // 初始化一次
             updateThumbPosition();

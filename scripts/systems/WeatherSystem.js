@@ -4,49 +4,122 @@
  */
 import * as THREE from 'three';
 
-// === 天空 Shader ===
+// === 天空 Shader（动森风格夜空）===
 export const SkyShader = {
     vertex: `
         varying vec2 vUv;
-        varying vec3 vWorldPosition;
-        varying vec4 vScreenPos;
+        varying vec3 vNormal;
         void main() {
             vUv = uv;
-            vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
-            vWorldPosition = worldPosition.xyz;
-            gl_Position = projectionMatrix * viewMatrix * worldPosition;
-            vScreenPos = gl_Position;
+            vNormal = normalize(position);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
     `,
     fragment: `
         uniform vec3 topColor;
         uniform vec3 bottomColor;
         uniform float starOpacity;
+        uniform float auroraOpacity;
+        uniform float time;
         uniform vec2 resolution;
         
         varying vec2 vUv;
-        varying vec3 vWorldPosition;
-        varying vec4 vScreenPos;
+        varying vec3 vNormal;
 
-        float random(vec2 st) {
-            return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+        // 高质量随机
+        float hash(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+        
+        // 噪声函数（用于银河效果）
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+        
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            for (int i = 0; i < 4; i++) {
+                v += a * noise(p);
+                p *= 2.0;
+                a *= 0.5;
+            }
+            return v;
         }
 
         void main() {
             float h = gl_FragCoord.y / resolution.y;
             vec3 bg = mix(bottomColor, topColor, h);
             
-            if (starOpacity > 0.0) {
-                vec2 st = vWorldPosition.xz * 0.05; 
-                vec2 ipos = floor(st);
+            // ===== 动森风格星星 =====
+            if (starOpacity > 0.0 && h > 0.25) {
+                vec2 uv = gl_FragCoord.xy;
                 
-                float rnd = random(ipos);
-                if (rnd > 0.97) { 
-                    float brightness = random(ipos + 1.0);
-                    float shine = sin(gl_FragCoord.x * 5.0 + brightness * 10.0) * 0.5 + 0.5;
-                    bg += vec3(starOpacity * shine * brightness);
+                // 大星星层（稀疏，约2%）
+                vec2 bigGrid = floor(uv / 50.0);  // 50像素网格
+                float bigRnd = hash(bigGrid);
+                if (bigRnd > 0.98) {
+                    vec2 gridCenter = (bigGrid + 0.5) * 50.0;
+                    float dist = length(uv - gridCenter);
+                    if (dist < 2.0) {
+                        float twinkle = sin(time * 1.5 + bigRnd * 6.28) * 0.2 + 0.8;
+                        float glow = smoothstep(2.0, 0.0, dist);
+                        bg += vec3(1.0, 1.0, 0.95) * glow * starOpacity * twinkle * 0.8;
+                    }
                 }
+                
+                // 中星星层（较稀疏，约3%）
+                vec2 medGrid = floor(uv / 35.0);
+                float medRnd = hash(medGrid + 100.0);
+                if (medRnd > 0.97) {
+                    vec2 gridCenter = (medGrid + 0.5) * 35.0;
+                    float dist = length(uv - gridCenter);
+                    if (dist < 1.2) {
+                        float twinkle = sin(time * 2.0 + medRnd * 6.28) * 0.3 + 0.7;
+                        float glow = smoothstep(1.2, 0.0, dist);
+                        bg += vec3(1.0, 1.0, 0.9) * glow * starOpacity * twinkle * 0.5;
+                    }
+                }
+                
+                // 小星星层（稍多，约5%）
+                vec2 smallGrid = floor(uv / 20.0);
+                float smallRnd = hash(smallGrid + 200.0);
+                if (smallRnd > 0.95) {
+                    vec2 gridCenter = (smallGrid + 0.5) * 20.0;
+                    float dist = length(uv - gridCenter);
+                    if (dist < 0.8) {
+                        float twinkle = sin(time * 3.0 + smallRnd * 6.28) * 0.4 + 0.6;
+                        bg += vec3(0.9, 0.95, 1.0) * starOpacity * twinkle * 0.3;
+                    }
+                }
+                
+                // 高度衰减：越靠近地平线星星越淡
+                float heightFade = smoothstep(0.25, 0.5, h);
+                bg = mix(mix(bottomColor, topColor, h), bg, heightFade);
             }
+            
+            // ===== 银河/淡紫色氛围 =====
+            if (auroraOpacity > 0.0 && h > 0.4) {
+                vec2 p = gl_FragCoord.xy / resolution.y;
+                
+                // 银河带 - 斜向的淡紫色光带
+                float milkyWay = fbm(p * 3.0 + vec2(time * 0.01, 0.0));
+                milkyWay *= smoothstep(0.4, 0.7, h) * smoothstep(1.0, 0.7, h);
+                
+                // 淡紫色到淡蓝色
+                vec3 milkyColor = mix(vec3(0.3, 0.2, 0.5), vec3(0.2, 0.3, 0.5), milkyWay);
+                bg += milkyColor * milkyWay * auroraOpacity * 0.15;
+            }
+            
             gl_FragColor = vec4(bg, 1.0);
         }
     `
@@ -71,6 +144,68 @@ export const AuroraShader = {
             
             vec3 color = mix(vec3(0.0, 1.0, 0.8), vec3(0.5, 0.0, 1.0), vUv.x);
             gl_FragColor = vec4(color, alpha * 0.4);
+        }
+    `
+};
+
+// === 窗户 Shader（带星星效果）===
+export const WindowSkyShader = {
+    vertex: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragment: `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform float starOpacity;
+        uniform float time;
+        varying vec2 vUv;
+
+        float hash(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+        }
+
+        void main() {
+            vec3 bg = mix(bottomColor, topColor, vUv.y);
+            
+            // 窗户内的星星（基于UV坐标，极度稀疏）
+            if (starOpacity > 0.0 && vUv.y > 0.3) {
+                // 少量中星星
+                vec2 medGrid = floor(vUv * 30.0);
+                float medRnd = hash(medGrid + 50.0);
+                if (medRnd > 0.98) {
+                    vec2 gridCenter = (medGrid + 0.5) / 30.0;
+                    float dist = length(vUv - gridCenter) * 30.0;
+                    if (dist < 0.4) {
+                        float twinkle = sin(time * 2.0 + medRnd * 6.28) * 0.3 + 0.7;
+                        float glow = smoothstep(0.4, 0.0, dist);
+                        bg += vec3(1.0, 1.0, 0.95) * glow * starOpacity * twinkle * 0.5;
+                    }
+                }
+                
+                // 少量小星星
+                vec2 smallGrid = floor(vUv * 45.0);
+                float smallRnd = hash(smallGrid + 100.0);
+                if (smallRnd > 0.97) {
+                    vec2 gridCenter = (smallGrid + 0.5) / 45.0;
+                    float dist = length(vUv - gridCenter) * 45.0;
+                    if (dist < 0.3) {
+                        float twinkle = sin(time * 3.0 + smallRnd * 6.28) * 0.4 + 0.6;
+                        bg += vec3(0.9, 0.95, 1.0) * starOpacity * twinkle * 0.3;
+                    }
+                }
+                
+                // 高度衰减
+                float heightFade = smoothstep(0.3, 0.6, vUv.y);
+                bg = mix(mix(bottomColor, topColor, vUv.y), bg, heightFade);
+            }
+            
+            gl_FragColor = vec4(bg, 1.0);
         }
     `
 };
@@ -100,11 +235,10 @@ export function createParticleTexture(type) {
 export class WeatherSystem {
     constructor(scene, statusCallback = null) {
         this.scene = scene;
-        this.statusCallback = statusCallback; // 用于更新状态文字
+        this.statusCallback = statusCallback;
         this.dome = null;
         this.skyMat = null;
 
-        this.aurora = null;
         this.clouds = [];
         this.rainSystem = null;
         this.snowSystem = null;
@@ -113,7 +247,6 @@ export class WeatherSystem {
         this.currentWeather = 'clear'; 
 
         this.initSky();
-        this.initAurora();
         this.initClouds();
         this.initPrecipitation();
     }
@@ -126,6 +259,8 @@ export class WeatherSystem {
                 topColor: { value: new THREE.Color(0x0077ff) },
                 bottomColor: { value: new THREE.Color(0xffffff) },
                 starOpacity: { value: 0.0 },
+                auroraOpacity: { value: 0.0 },
+                time: { value: 0.0 },
                 resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
             },
             vertexShader: SkyShader.vertex,
@@ -137,25 +272,6 @@ export class WeatherSystem {
         this.dome = new THREE.Mesh(geo, this.skyMat);
         this.dome.renderOrder = -1;
         this.scene.add(this.dome);
-    }
-
-    initAurora() {
-        const geo = new THREE.CylinderGeometry(200, 200, 50, 32, 1, true, 0, Math.PI);
-        geo.rotateZ(Math.PI / 8);
-        geo.translate(0, 100, -200);
-        
-        const mat = new THREE.ShaderMaterial({
-            uniforms: { time: { value: 0 } },
-            vertexShader: AuroraShader.vertex,
-            fragmentShader: AuroraShader.fragment,
-            transparent: true,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
-        this.aurora = new THREE.Mesh(geo, mat);
-        this.aurora.visible = false;
-        this.scene.add(this.aurora);
     }
     
     initClouds() {
@@ -188,6 +304,9 @@ export class WeatherSystem {
                 
                 cloudGroup.scale.setScalar(1.0);
 
+                // 云的高度：-4 到 4 之间随机（范围8）
+                const cloudHeight = -12 + Math.random() * 12;
+
                 if (dir.axis === 'x') {
                     cloudGroup.userData = {
                         axis: 'x',
@@ -195,7 +314,7 @@ export class WeatherSystem {
                         direction: dir.moveDir,
                         minX: dir.minX,
                         maxX: dir.maxX,
-                        baseY: -10 + Math.random() * 1,
+                        baseY: cloudHeight,
                         baseZ: dir.baseZ
                     };
                     cloudGroup.position.set(
@@ -210,7 +329,7 @@ export class WeatherSystem {
                         direction: dir.moveDir,
                         minZ: dir.minZ,
                         maxZ: dir.maxZ,
-                        baseY: -10 + Math.random() * 1,
+                        baseY: cloudHeight,
                         baseX: dir.baseX
                     };
                     cloudGroup.position.set(
@@ -280,31 +399,51 @@ export class WeatherSystem {
         }
     }
 
+    // 即时设置时间（用于滑块快速拖动时）
+    setTimeInstant(hour) {
+        // 即时更新天空颜色
+        this.updateSkyColor(hour, true);
+        
+        // 即时更新星星
+        const targetStarOpacity = (hour >= 19 || hour <= 5) ? 1.0 : 0.0;
+        this.skyMat.uniforms.starOpacity.value = targetStarOpacity;
+        
+        // 即时更新极光（融入shader）
+        const targetAuroraOpacity = (hour >= 22 || hour < 3) ? 1.0 : 0.0;
+        this.skyMat.uniforms.auroraOpacity.value = targetAuroraOpacity;
+    }
+
     update(dt, hour) {
         this.updateSkyColor(hour);
+        
+        // 更新shader时间（用于极光动画）
+        this.skyMat.uniforms.time.value += dt;
 
+        // 星星渐变
         let targetStarOpacity = 0;
         if (hour >= 19 || hour <= 5) targetStarOpacity = 1.0;
         
-        const currentOp = this.skyMat.uniforms.starOpacity.value;
-        const newOp = currentOp + (targetStarOpacity - currentOp) * dt * 0.5;
-        
-        this.skyMat.uniforms.starOpacity.value = newOp;
+        const currentStarOp = this.skyMat.uniforms.starOpacity.value;
+        this.skyMat.uniforms.starOpacity.value += (targetStarOpacity - currentStarOp) * dt * 0.5;
 
+        // 极光渐变 (22:00 - 03:00)
+        let targetAuroraOpacity = 0;
+        if (hour >= 22 || hour < 3) targetAuroraOpacity = 1.0;
+        
+        const currentAuroraOp = this.skyMat.uniforms.auroraOpacity.value;
+        this.skyMat.uniforms.auroraOpacity.value += (targetAuroraOpacity - currentAuroraOp) * dt * 0.5;
+
+        // 同步窗户材质的星星和时间
         this.windowMaterials.forEach(mat => {
-            if (mat && mat.uniforms && mat.uniforms.starOpacity && mat.uniforms.resolution) {
-                mat.uniforms.starOpacity.value = newOp;
-                mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+            if (mat && mat.uniforms) {
+                if (mat.uniforms.starOpacity) {
+                    mat.uniforms.starOpacity.value = this.skyMat.uniforms.starOpacity.value;
+                }
+                if (mat.uniforms.time) {
+                    mat.uniforms.time.value = this.skyMat.uniforms.time.value;
+                }
             }
         });
-
-        if (hour > 22 || hour < 3) {
-            this.aurora.visible = true;
-            this.aurora.material.uniforms.time.value += dt * 0.5;
-            if(this.aurora.material.opacity < 1) this.aurora.material.opacity += dt * 0.5;
-        } else {
-            this.aurora.visible = false;
-        }
 
         this.clouds.forEach(c => {
             if (c.userData.axis === 'x') {
