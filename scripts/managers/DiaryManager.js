@@ -10,6 +10,7 @@ export class DiaryManager {
         this.weatherSystem = weatherSystem; // 引用天气系统
         
         this.storageKey = 'cat_game_diary_v1';
+        this.lastReadKey = 'cat_game_last_read_diary'; // 新增：记录最后阅读的日记key
         this.entries = {}; // 结构: { "YYYY-MM-DD": { meta: {}, events: [] } }
         this.eventCooldowns = {};
         this.viewingDate = new Date();
@@ -37,6 +38,9 @@ export class DiaryManager {
         localStorage.setItem('last_login_time', now.toString());
 
         this.checkSpecialDayEvent();
+        
+        // [新增] 初始化时检查红点状态
+        this.checkAndUpdateRedDot();
     }
 
     checkSpecialDayEvent() {
@@ -224,7 +228,7 @@ export class DiaryManager {
         
         this.entries[key].events = currentDayEntries;
         this.save();
-        this.updateUIHint(true);
+        this.checkAndUpdateRedDot(); // 修改：使用新方法检查是否显示红点
     }
 
     generateDailyMeta() {
@@ -327,6 +331,23 @@ export class DiaryManager {
     updateUIHint(hasNew) {
         const dot = document.getElementById('diary-red-dot-hud');
         if(dot) dot.style.display = hasNew ? 'block' : 'none';
+    }
+
+    // 新增：检查是否有未读日记并更新红点
+    checkAndUpdateRedDot() {
+        const todayKey = this.getTodayKey();
+        const lastReadKey = localStorage.getItem(this.lastReadKey);
+        
+        // 如果今天的日记还没被阅读过，显示红点
+        const hasUnread = (todayKey !== lastReadKey) && this.entries[todayKey] && this.entries[todayKey].events.length > 0;
+        this.updateUIHint(hasUnread);
+    }
+
+    // 修改：当用户打开日记时，标记为已读
+    markAsRead() {
+        const todayKey = this.getTodayKey();
+        localStorage.setItem(this.lastReadKey, todayKey);
+        this.updateUIHint(false);
     }
 
     changePage(delta) {

@@ -2121,7 +2121,7 @@ function renderShopItems(cat) {
                 diaryManager.flushPendingEvents(); 
                 diaryManager.viewingDate = new Date(); 
                 diaryManager.renderPage();
-                diaryManager.updateUIHint(false);
+                diaryManager.markAsRead(); // [修复] 使用新方法标记为已读
 
                 // [修正] 播放打开音效
                 audioManager.playSfx('ui_popup');
@@ -2172,7 +2172,7 @@ function renderShopItems(cat) {
             }
             
             // 刷新红点
-            diaryManager.updateUIHint(true);
+            diaryManager.checkAndUpdateRedDot(); // [修复] 使用新方法检查红点状态
             // 如果日记开着，刷新页面
             const modal = document.getElementById('diary-modal');
             if (modal && !modal.classList.contains('hidden')) {
