@@ -889,7 +889,7 @@ window.toggleWeather = function() {
             // 循环切换
             let currentIdx = types.indexOf(weatherSystem.currentWeather);
             let nextIdx = (currentIdx + 1) % types.length;
-            weatherSystem.setWeather(types[nextIdx]);
+            weatherSystem.setWeather(types[nextIdx], true); // true 表示手动切换
         };
 
         // [新增] 天气按钮循环切换函数
@@ -913,8 +913,8 @@ window.toggleWeather = function() {
             let nextIdx = (currentIdx + 1) % weatherTypes.length;
             let nextWeather = weatherTypes[nextIdx];
             
-            // 更新天气系统
-            weatherSystem.setWeather(nextWeather);
+            // 更新天气系统（true 表示手动切换）
+            weatherSystem.setWeather(nextWeather, true);
             
             // 更新按钮图标
             const iconImg = document.getElementById('weather-btn-icon');
@@ -1541,12 +1541,45 @@ function renderShopItems(cat) {
                     if (hits.length > 0) {
                         const h = hits[0]; const n = h.face.normal;
                         if (Math.abs(n.y) > 0.5) return; 
-                        const offset = currentItemData.size.z / 2 + 0.01;
+                        
+                        // === 根据 wallFace 配置选择正确的 offset ===
+                        const wallFace = currentItemData.wallFace || 'back';
+                        let offsetDepth;
+                        switch(wallFace) {
+                            case 'left':  case '-x':
+                            case 'right': case '+x':
+                                // 左右贴墙时，用 size.x 作为贴墙深度
+                                offsetDepth = currentItemData.size.x / 2;
+                                break;
+                            case 'front': case '-z':
+                            case 'back':  case '+z':
+                            default:
+                                // 前后贴墙时，用 size.z 作为贴墙深度
+                                offsetDepth = currentItemData.size.z / 2;
+                                break;
+                        }
+                        const offset = offsetDepth + 0.01;
+                        
                         const pos = h.point.clone().add(n.clone().multiplyScalar(offset));
                         if (Math.abs(n.x) > 0.5) { pos.y = Math.round(pos.y / 0.5) * 0.5; pos.z = Math.round(pos.z / 0.5) * 0.5; } 
                         else { pos.x = Math.round(pos.x / 0.5) * 0.5; pos.y = Math.round(pos.y / 0.5) * 0.5; }
                         const hh = currentItemData.size.y / 2; if (pos.y < hh) pos.y = hh; if (pos.y + hh > 3) pos.y = 3 - hh;
-                        ghostMesh.position.copy(pos); ghostMesh.lookAt(pos.clone().add(n)); checkColl(true);
+                        ghostMesh.position.copy(pos); 
+                        ghostMesh.lookAt(pos.clone().add(n)); 
+                        
+                        // === 应用 wallFace 配置，调整贴墙朝向 ===
+                        let faceRotation = 0;
+                        switch(wallFace) {
+                            case 'front': case '-z': faceRotation = Math.PI; break;       // 正面贴墙，需旋转180度
+                            case 'left':  case '-x': faceRotation = -Math.PI / 2; break;  // 左侧贴墙，需旋转-90度
+                            case 'right': case '+x': faceRotation = Math.PI / 2; break;   // 右侧贴墙，需旋转90度
+                            case 'back':  case '+z': default: faceRotation = 0; break;    // 背面贴墙，默认不旋转
+                        }
+                        if (faceRotation !== 0) {
+                            ghostMesh.rotateY(faceRotation);
+                        }
+                        
+                        checkColl(true);
                     }
                     return;
                 }
@@ -1702,6 +1735,11 @@ function renderShopItems(cat) {
             cats.forEach(c => c.update(dt)); 
             if(selectionBox) selectionBox.update();
             
+            // [新增] 每帧检查天气（只会在日期变化时触发）
+            if (weatherSystem) {
+                weatherSystem.checkDailyWeather();
+            }
+            
             // [新增] 更新照片系统（自动拍照检查）
             if (photoManager) photoManager.update();
             
@@ -1745,6 +1783,12 @@ function renderShopItems(cat) {
                 // [新增] 初始化天候系统
                 weatherSystem = new WeatherSystem(scene, updateStatusText);
                 weatherSystem.updateSkyColor(visualHour, true);
+                
+                // [新增] 将天气系统关联到日记管理器，并检查每日天气
+                if (window.diaryManager) {
+                    window.diaryManager.weatherSystem = weatherSystem;
+                    weatherSystem.checkDailyWeather();
+                }
 
                 const aspect = window.innerWidth / window.innerHeight; 
                 // [修改] 将 d=12 改为 d=9 (数值越小，镜头越近)
@@ -2056,7 +2100,8 @@ function renderShopItems(cat) {
         }
 
         // === [新增] 全局日记实例与交互函数 ===
-        const diaryManager = new DiaryManager(DIARY_CONFIG, updateStatusText);
+        // 注意：weatherSystem 在 startGame() 中初始化，所以这里先不传入
+        const diaryManager = new DiaryManager(DIARY_CONFIG, updateStatusText, null);
         const photoManager = new PhotoManager();
 
         // [新增] 关键修复：把实例挂载到 window，让 HTML 里的 onclick 能找到它

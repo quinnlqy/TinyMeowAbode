@@ -3,6 +3,7 @@
  * 管理天空、云朵、极光、雨雪等天气效果
  */
 import * as THREE from 'three';
+import { WEATHER_CONFIG } from '../data/WeatherConfig.js';
 
 // === 天空 Shader（动森风格夜空）===
 export const SkyShader = {
@@ -244,7 +245,9 @@ export class WeatherSystem {
         this.snowSystem = null;
         
         this.windowMaterials = [];
-        this.currentWeather = 'clear'; 
+        this.currentWeather = 'clear';
+        this.lastWeatherCheckDate = null; // 记录上次检查天气的日期
+        this.isManualWeather = false; // 标记是否为玩家手动切换的天气
 
         this.initSky();
         this.initClouds();
@@ -386,8 +389,15 @@ export class WeatherSystem {
         this.scene.add(this.precipSystem);
     }
     
-    setWeather(type) {
+    /**
+     * 设置天气
+     * @param {string} type - 天气类型：'clear', 'rain', 'snow'
+     * @param {boolean} isManual - 是否为玩家手动切换（true=手动，false=自然变化）
+     */
+    setWeather(type, isManual = false) {
         this.currentWeather = type;
+        this.isManualWeather = isManual;
+        
         if (type === 'clear') {
             this.precipSystem.visible = false;
         } else {
@@ -397,6 +407,76 @@ export class WeatherSystem {
         if (this.statusCallback) {
             this.statusCallback("天气变成了: " + type);
         }
+    }
+
+    /**
+     * 检查并随机设置每日天气（基于月份概率或特殊日期）
+     * @returns {string} 返回当前天气类型：'clear', 'rain', 'snow'
+     */
+    checkDailyWeather() {
+        const now = new Date();
+        const todayKey = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+        
+        // 如果今天已经检查过天气，直接返回当前天气
+        if (this.lastWeatherCheckDate === todayKey) {
+            return this.currentWeather;
+        }
+        
+        // 新的一天，重新随机天气
+        this.lastWeatherCheckDate = todayKey;
+        this.isManualWeather = false; // 重置手动标记（新的一天开始自然天气）
+        
+        const month = now.getMonth() + 1; // 1-12
+        const dateKey = `${month}-${now.getDate()}`;
+        
+        // 优先检查特殊日期配置
+        if (WEATHER_CONFIG.special_date_weather && WEATHER_CONFIG.special_date_weather[dateKey]) {
+            const specialWeather = WEATHER_CONFIG.special_date_weather[dateKey];
+            this.setWeather(specialWeather, false);
+            return specialWeather;
+        }
+        
+        // 使用月度概率配置
+        const config = WEATHER_CONFIG.monthly_probability[month];
+        
+        if (!config) {
+            this.setWeather('clear', false);
+            return 'clear';
+        }
+        
+        const rainProb = config.rain || 0;
+        const snowProb = config.snow || 0;
+        const random = Math.random();
+        
+        // 优先判断下雪，然后下雨，最后晴天
+        if (random < snowProb) {
+            this.setWeather('snow', false);
+            return 'snow';
+        } else if (random < snowProb + rainProb) {
+            this.setWeather('rain', false);
+            return 'rain';
+        } else {
+            this.setWeather('clear', false);
+            return 'clear';
+        }
+    }
+
+    /**
+     * 获取当前天气对应的日记描述文案
+     * 注意：如果是玩家手动切换的天气，不应该调用此方法
+     * @returns {string} 天气描述文案
+     */
+    getWeatherDescription() {
+        // 如果是手动天气，返回 null，让日记系统使用默认描述
+        if (this.isManualWeather) {
+            return null;
+        }
+        
+        const descriptions = WEATHER_CONFIG.weather_descriptions[this.currentWeather];
+        if (!descriptions || descriptions.length === 0) {
+            return "☀️ 阳光正好，适合烤毛";
+        }
+        return descriptions[Math.floor(Math.random() * descriptions.length)];
     }
 
     // 即时设置时间（用于滑块快速拖动时）

@@ -4,9 +4,10 @@
  */
 
 export class DiaryManager {
-    constructor(diaryConfig, statusCallback = null) {
+    constructor(diaryConfig, statusCallback = null, weatherSystem = null) {
         this.DIARY_CONFIG = diaryConfig;
         this.statusCallback = statusCallback;
+        this.weatherSystem = weatherSystem; // 引用天气系统
         
         this.storageKey = 'cat_game_diary_v1';
         this.entries = {}; // 结构: { "YYYY-MM-DD": { meta: {}, events: [] } }
@@ -237,9 +238,19 @@ export class DiaryManager {
         let mood = metaConfig.moods[Math.floor(Math.random() * metaConfig.moods.length)];
         let keyword = metaConfig.keywords[Math.floor(Math.random() * metaConfig.keywords.length)];
 
+        // 优先级1：特殊节日配置
         if (specialConfig) {
             weather = specialConfig.weather[Math.floor(Math.random() * specialConfig.weather.length)];
             mood = specialConfig.mood[Math.floor(Math.random() * specialConfig.mood.length)];
+        }
+        // 优先级2：天气系统同步（如果有天气系统且不是特殊节日）
+        // 只有在非手动天气时才使用天气系统的描述
+        else if (this.weatherSystem) {
+            const weatherDesc = this.weatherSystem.getWeatherDescription();
+            // 如果返回 null，说明是手动天气，使用默认随机描述
+            if (weatherDesc !== null) {
+                weather = weatherDesc;
+            }
         }
 
         return { weather, mood, keyword };

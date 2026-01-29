@@ -1,6 +1,13 @@
 /**
  * FurnitureDB.js - 家具数据库
  * 包含所有可购买家具的配置信息
+ * 
+ * 墙面家具配置说明 (type: 'wall'):
+ * - wallFace: 定义模型的哪一面是贴墙面，取值为:
+ *   - 'back'   或 '+z' : 模型的背面(+Z方向)贴墙 (默认值)
+ *   - 'front'  或 '-z' : 模型的正面(-Z方向)贴墙
+ *   - 'left'   或 '-x' : 模型的左侧(-X方向)贴墙
+ *   - 'right'  或 '+x' : 模型的右侧(+X方向)贴墙
  */
 
 export const FURNITURE_DB = [
@@ -102,7 +109,7 @@ export const FURNITURE_DB = [
     { id: 'Cupboardlamp',     type: 'small', layer: 2, name: '柜子灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'Cupboardlamp.glb', modelScale: 0.6, fixBottom: true, lightOffset: { x: 0, y: 1.8, z: 0 }  },
    
     { id: 'wall_plant',    type: 'wall',  layer: 1, name: '壁挂植物', price: 20,  color: 0x2ecc71, size: {x:2, y:0.5, z:0.5}, modelFile: 'wall_plant.glb', modelScale: 0.8 },
-    { id: 'WoodenCabinet',    type: 'wall',  layer: 1, name: '壁柜', price: 20,  color: 0x2ecc71, size: {x:0.5, y:0.5, z:2.0}, modelFile: 'WoodenCabinet.glb', modelScale: 0.8 },
+    { id: 'WoodenCabinet',    type: 'wall',  layer: 1, name: '壁柜', price: 20,  color: 0x2ecc71, size: {x:0.5, y:0.5, z:2.0}, modelFile: 'WoodenCabinet.glb',wallFace:'left', modelScale: 0.8 },
     { id: 'WallClock',    type: 'wall',  layer: 1, name: '挂钟', price: 20,  color: 0x2ecc71, size: {x:0.6, y:0.5, z:0.5}, modelFile: 'WallClock.glb', modelScale: 0.5 },
     { id: 'CalligraphyFu',    type: 'wall',  layer: 1, name: '春节福', price: 20,  color: 0x2ecc71, size: {x:0.6, y:0.5, z:0.5}, modelFile: 'CalligraphyFu.glb', modelScale: 0.5 },
 
