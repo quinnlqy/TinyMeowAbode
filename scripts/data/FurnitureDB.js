@@ -23,6 +23,7 @@ export const FURNITURE_DB = [
     { id: 'ArmChair',     type: 'floor', layer: 1, name: '扶手椅', price: 150, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'ArmChair.glb', modelScale: 1.0, canSleep: true, fixBottom: true },
     { id: 'ArmChair2',     type: 'floor', layer: 1, name: '绿色椅子', price: 100, color: 0xe74c3c, size: {x:1.2, y:0.6, z:1.2},   modelFile: 'Chair.glb', modelScale: 0.8, canSleep: true, fixBottom: true },
     { id: 'Chair_Comfort',     type: 'floor', layer: 1, name: '摇摇椅', price: 100, color: 0xe74c3c, size: {x:1, y:0.6, z:1},   modelFile: 'Chair_Comfort.glb', modelScale: 0.8, canSleep: true, fixBottom: true },
+    { id: 'PersonBed',     type: 'floor', layer: 1, name: '床', price: 100, color: 0xe74c3c, size: {x:2, y:1.2, z:2},   modelFile: 'PersonBed.glb', modelScale: 1.6, canSleep: true, fixBottom: true },
 
     { id: 'TeaSetTable',     type: 'floor', layer: 1, name: '茶台', price: 100, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'TeaSetTable.glb', modelScale: 0.6, canSleep: false, fixBottom: true },
     { id: 'TelevisionTable',     type: 'floor', layer: 1, name: '电视柜', price: 100, color: 0xe74c3c, size: {x:1.2, y:1, z:1.2},   modelFile: 'TelevisionTable.glb', modelScale: 1.5, canSleep: false, fixBottom: true },
@@ -30,6 +31,9 @@ export const FURNITURE_DB = [
     { id: 'Cushion_Roundel',      type: 'floor', layer: 1, name: '圆垫子',   price: 40,  color: 0xe67e22, size: {x:1, y:0.2, z:0.8}, modelFile: 'Cushion_Roundel.glb', modelScale: 0.5, canSleep: true, fixBottom: true },
     { id: 'Go_Board',      type: 'floor', layer: 1, name: '围棋',   price: 40,  color: 0xe67e22, size: {x:1, y:0.6, z:1}, modelFile: 'Go_Board.glb', modelScale: 0.6, canSleep: true, fixBottom: true },
     { id: 'Closet',      type: 'floor', layer: 1, name: '衣柜',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'Closet.glb', modelScale: 1.6, canSleep: false, fixBottom: true },
+    { id: 'Cabinet',      type: 'floor', layer: 1,isSurface: true, name: '矮柜',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'Cabinet.glb', modelScale: 0.5, canSleep: false, fixBottom: true },
+    { id: 'GreenCabinet',      type: 'floor', layer: 1,isSurface: true, name: '绿柜子',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'GreenCabinet.glb', modelScale: 1.0, canSleep: false, fixBottom: true },
+    { id: 'BathroomCabinet',      type: 'floor', layer: 1,isSurface: true, name: '洗手池',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'BathroomCabinet.glb', modelScale: 1.0, canSleep: false, fixBottom: true },
 
     { id: 'cat_tree', type: 'floor', layer: 1, name: '猫爬架', price: 100, color: 0x8e44ad, size: {x:1, y:1.8, z:1},   modelFile: 'cat_tree.glb', modelScale: 1.0 , fixBottom: true},
     { id: 'book_shelf', type: 'floor', layer: 1, name: '书架', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'book_shelf.glb', modelScale: 1.0, fixBottom: true, isSurface: true, surfaceHeight: 2.0 }, 
@@ -37,9 +41,13 @@ export const FURNITURE_DB = [
     { id: 'CafeTree', type: 'floor', layer: 1, name: '大盆栽', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'CafeTree.glb', modelScale: 1.0, fixBottom: true },
     { id: 'PottedGreenPlant', type: 'floor', layer: 1, name: '大盆栽', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'PottedGreenPlant.glb', modelScale: 1.0, fixBottom: true },
     { id: 'GreenPlant', type: 'floor', layer: 1, name: '盆栽', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'GreenPlant.glb', modelScale: 1.0, fixBottom: true },
+    { id: 'OrangeTree', type: 'floor', layer: 1, name: '橘子盆摘', price: 100, color: 0x8e44ad, size: {x:2, y:2, z:1},   modelFile: 'OrangeTree.glb', modelScale: 1.0, fixBottom: true },
  
     { id: 'Television', type: 'floor', layer: 1, name: '电视', price: 100, color: 0x8e44ad, size: {x:1.9, y:1.5, z:0.8},   modelFile: 'Television.glb', modelScale: 1.0, fixBottom: true },
     { id: 'table',    type: 'floor', layer: 1, isSurface: true, surfaceHeight: 0.8, name: '木桌', price: 60,  color: 0x8d6e63, size: {x:1.5, y:0.6, z:1.5}, modelFile: 'table.glb', modelScale: 1.0, fixBottom: true },
+    { id: 'Tabletop',      type: 'floor', layer: 1,isSurface: true, name: '绿色小桌',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'Tabletop.glb', modelScale: 0.5, canSleep: false, fixBottom: true },
+    { id: 'FlowerStool',      type: 'floor', layer: 1,isSurface: true, name: '小花桌',   price: 40,  color: 0xe67e22, size: {x:1, y:0.5, z:0.8}, modelFile: 'FlowerStool.glb', modelScale: 0.5, canSleep: false, fixBottom: true },
+
     { 
         id: 'ChrismasTree',    
         type: 'floor', 
@@ -61,6 +69,13 @@ export const FURNITURE_DB = [
     { id: 'mug',      type: 'small', layer: 2, name: '马克杯', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'mug.glb', modelScale: 0.2, fixBottom: true },
     { id: 'DalMug',      type: 'small', layer: 2, name: '马克杯蓝', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'DalMug.glb', modelScale: 0.8, fixBottom: true },
     { id: 'CoffeeCup',      type: 'small', layer: 2, name: '咖啡杯', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'CoffeeCup.glb', modelScale: 0.8, fixBottom: true },
+    { id: 'PumpkinDrink',      type: 'small', layer: 2, name: '南瓜咖啡', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'PumpkinDrink.glb', modelScale: 0.2, fixBottom: true },
+
+    { id: 'BlossomVase',      type: 'small', layer: 2, name: '小花瓶', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'BlossomVase.glb', modelScale: 0.3, fixBottom: true },
+
+    { id: 'Phonograph',      type: 'small', layer: 2, name: '唱片机', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'Phonograph.glb', modelScale: 0.5, fixBottom: true },
+    { id: 'WovenElegance',      type: 'small', layer: 2, name: '竹编包', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'WovenElegance.glb', modelScale: 0.3, fixBottom: true },
+
     { id: 'ToyCarrot',      type: 'small', layer: 2, name: '胡萝卜', price: 5,   color: 0xffffff, size: {x:0.3, y:0.3, z:0.3}, modelFile: 'Carrot.glb', modelScale: 0.3, fixBottom: true, isToy: true },
 
     { 
@@ -84,8 +99,13 @@ export const FURNITURE_DB = [
 
     { id: 'floor_lamp',     type: 'small', layer: 2, name: '落地灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'floor_lamp.glb', modelScale: 1.0, fixBottom: true, lightOffset: { x: 0, y: 1.8, z: 0 }  },
     { id: 'cutelamp',     type: 'small', layer: 2, name: '落地灯2',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'cutelamp.glb', modelScale: 1.0, fixBottom: true, lightOffset: { x: 0, y: 1.8, z: 0 }  },
+    { id: 'Cupboardlamp',     type: 'small', layer: 2, name: '柜子灯',   price: 25,  color: 0xf1c40f, size: {x:0.4, y:0.6, z:0.4}, light: true, lightType: 'point', modelFile: 'Cupboardlamp.glb', modelScale: 0.6, fixBottom: true, lightOffset: { x: 0, y: 1.8, z: 0 }  },
    
-    { id: 'wall_plant',    type: 'wall',  layer: 1, name: '壁挂藤', price: 20,  color: 0x2ecc71, size: {x:2, y:0.5, z:0.5}, modelFile: 'wall_plant.glb', modelScale: 0.8 },
+    { id: 'wall_plant',    type: 'wall',  layer: 1, name: '壁挂植物', price: 20,  color: 0x2ecc71, size: {x:2, y:0.5, z:0.5}, modelFile: 'wall_plant.glb', modelScale: 0.8 },
+    { id: 'WoodenCabinet',    type: 'wall',  layer: 1, name: '壁柜', price: 20,  color: 0x2ecc71, size: {x:0.5, y:0.5, z:2.0}, modelFile: 'WoodenCabinet.glb', modelScale: 0.8 },
+    { id: 'WallClock',    type: 'wall',  layer: 1, name: '挂钟', price: 20,  color: 0x2ecc71, size: {x:0.6, y:0.5, z:0.5}, modelFile: 'WallClock.glb', modelScale: 0.5 },
+    { id: 'CalligraphyFu',    type: 'wall',  layer: 1, name: '春节福', price: 20,  color: 0x2ecc71, size: {x:0.6, y:0.5, z:0.5}, modelFile: 'CalligraphyFu.glb', modelScale: 0.5 },
+
     { id: 'painting', type: 'wall',  layer: 1, name: '风景画', price: 50,  color: 0xFFD700, size: {x:1, y:1, z:0.1}, modelFile: 'painting.glb', modelScale: 1.0 },
     { id: 'curtain', type: 'wall', layer: 1, name: '窗帘', price: 80, color: 0xFFFFFF, size: {x:2.0, y:2.0, z:0.5}, modelFile: 'curtain.glb', modelScale: 1.5, autoCenter: true, allowOverlap: true },
     { id: 'wall_star', type: 'wall', layer: 1, name: '星星挂饰', price: 30, color: 0xFFFF00, size: {x:0.5, y:0.5, z:0.5}, modelFile: 'WallDecorate_Star.glb', modelScale: 1.0, autoCenter: true, allowOverlap: true },

@@ -498,7 +498,10 @@ export class WeatherSystem {
                 }
 
                 if (positions[i+1] < -5) {
-                    positions[i+1] = 50;
+                    // 重置Y坐标，并重新随机X和Z坐标，防止雪花飘出可见范围
+                    positions[i] = (Math.random() - 0.5) * 100;   // 重置X
+                    positions[i+1] = 50;                           // 重置Y
+                    positions[i+2] = (Math.random() - 0.5) * 100;  // 重置Z
                 }
             }
             this.precipSystem.geometry.attributes.position.needsUpdate = true;

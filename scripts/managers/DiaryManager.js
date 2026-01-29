@@ -146,6 +146,9 @@ export class DiaryManager {
             weight: weight,
             rawType: eventType
         });
+        
+        // [修复] 立即保存，防止关闭游戏时丢失日记
+        this.flushPendingEvents();
     }
 
     generateOfflineEvents(offlineDurationHours) {
