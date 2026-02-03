@@ -1,3 +1,4 @@
 {
-    "codingcopilot.enableCompletionLanguage": {}
+    "codingcopilot.enableCompletionLanguage": {},
+    "liveServer.settings.port": 5501
 }

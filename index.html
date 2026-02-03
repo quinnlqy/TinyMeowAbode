@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,25 +14,29 @@
     <link rel="stylesheet" href="./styles/photo-mode.css">
     <!-- 内联样式已迁移到 styles/main.css -->
     <script>
-        function logToScreen(msg, type = 'info') 
-        { 
-            const consoleDiv = document.getElementById('debug-console'); 
-            if (consoleDiv) { 
+        function logToScreen(msg, type = 'info') {
+            const consoleDiv = document.getElementById('debug-console');
+            if (consoleDiv) {
                 //consoleDiv.style.display = 'block'; 
-                const line = document.createElement('div'); 
-                line.textContent = `> ${msg}`; 
-                if (type === 'error') line.className = 'log-error'; 
-                else if (type === 'warn') line.className = 'log-warn'; consoleDiv.appendChild(line); consoleDiv.scrollTop = consoleDiv.scrollHeight; } console.log(msg); }
-        window.onerror = function(msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); document.getElementById('force-start-btn').style.display = 'block'; return false; };
+                const line = document.createElement('div');
+                line.textContent = `> ${msg}`;
+                if (type === 'error') line.className = 'log-error';
+                else if (type === 'warn') line.className = 'log-warn'; consoleDiv.appendChild(line); consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            } console.log(msg);
+        }
+        window.onerror = function (msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); document.getElementById('force-start-btn').style.display = 'block'; return false; };
     </script>
 </head>
+
 <body>
 
     <div id="debug-console">V91 系统日志...</div>
 
     <div id="loading-screen">
         <div id="loading-text">资源加载中...</div>
-        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <div id="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
         <button id="force-start-btn" onclick="window.forceStart()">⚠️ 强制进入游戏</button>
     </div>
 
@@ -39,9 +44,9 @@
         <h3 id="dialog-title">补充猫粮?</h3>
         <p id="dialog-msg">需要消耗 10 爱心</p>
         <div class="dialog-btns">
-		<button class="dialog-btn btn-no" onclick="closeDialog()">取消</button>
-		<button class="dialog-btn btn-yes" id="btn-confirm-yes">确定</button>
-		</div>
+            <button class="dialog-btn btn-no" onclick="closeDialog()">取消</button>
+            <button class="dialog-btn btn-yes" id="btn-confirm-yes">确定</button>
+        </div>
     </div>
 
 
@@ -51,11 +56,12 @@
         1. 修复猫咪睡觉"踢腿"/来回走<br>
         2. 吃饭对准/站猫砂盆上<br>
         3. 状态栏常驻左下角<br>
-        <div style="margin-top:5px; border-top:1px solid #ccc; padding-top:5px;"><span id="status-text">初始化...</span></div>
+        <div style="margin-top:5px; border-top:1px solid #ccc; padding-top:5px;"><span id="status-text">初始化...</span>
+        </div>
     </div>
 
     <!-- ================== 新版 HUD ================== -->
-    
+
     <!-- 1. 左上角：时间与状态 -->
     <div id="hud-top-left">
         <!-- 时间组件 -->
@@ -90,13 +96,13 @@
             </div>
         </div>
 
-<!-- 生理状态组件 -->
+        <!-- 生理状态组件 -->
         <div id="status-widget-group">
             <!-- 饱食度 -->
             <div class="status-circle">
                 <!-- 1. 底层 Frame -->
                 <img src="./assets/ui/hunger_icon_frame.png" class="status-frame">
-                
+
                 <!-- 2. 中间 Mask (负责切圆角) -->
                 <div class="liquid-mask">
                     <!-- [新增] 水位容器 (负责控制高度) -->
@@ -105,7 +111,7 @@
                         <img src="./assets/ui/hunger_icon_fill.png" class="liquid-texture">
                     </div>
                 </div>
-                
+
                 <!-- 3. 顶层 Icon -->
                 <img src="./assets/ui/hunger_icon.png" class="status-icon-fg">
             </div>
@@ -125,19 +131,22 @@
     </div>
 
     <!-- [新增] 右上角 Debug 工具栏 HTML -->
-<div id="debug-panel">
-    <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
-    <button class="debug-btn" onclick="debugResetCat()">重置猫</button>
-    <button class="debug-btn" onclick="window.debugCatInfo()">🐱 猫咪状态</button>
-    <button class="debug-btn" onclick="window.debugForceToilet()">🚽 上厕所</button>
-    <button class="debug-btn" onclick="toggleDebugGizmos()">线框</button>
-    <button class="debug-btn" onclick="toggleConsole()">📜 日志</button>
-    <button class="debug-btn" onclick="window.debugGenDiary()">📝 生成</button>
-    <button class="debug-btn" onclick="window.debugClearDiary()">🗑️ 清空</button>
+    <div id="debug-panel">
+        <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
+        <button class="debug-btn" onclick="debugResetCat()">重置猫</button>
+        <button class="debug-btn" onclick="window.debugCatInfo()">🐱 猫咪状态</button>
+        <button class="debug-btn" onclick="window.debugForceToilet()">🚽 上厕所</button>
+        <button class="debug-btn" onclick="toggleDebugGizmos()">线框</button>
+        <button class="debug-btn" onclick="toggleConsole()">📜 日志</button>
+        <button class="debug-btn" onclick="window.debugGenDiary()">📝 生成</button>
+        <button class="debug-btn" onclick="window.debugClearDiary()">🗑️ 清空</button>
         <!-- [新增] 阴影开关按钮 -->
-    <button class="debug-btn" onclick="window.toggleShadows()">🌑 阴影</button>
-    <button class="debug-btn" onclick="window.toggleWeather()">🌤️ 天气</button>
-</div>
+        <button class="debug-btn" onclick="window.toggleShadows()">🌑 阴影</button>
+        <button class="debug-btn" onclick="window.toggleWeather()">🌤️ 天气</button>
+        <!-- [新增] 存档导出/导入按钮 -->
+        <button class="debug-btn" onclick="window.exportSaveToFile()">💾 导出</button>
+        <button class="debug-btn" onclick="window.importSaveFromFile()">📂 导入</button>
+    </div>
 
     <!-- 2. 底部：功能入口 -->
     <div id="hud-bottom-bar">
@@ -151,12 +160,12 @@
     </div>
 
     <!-- 3. 商店面板 (修改原有结构，增加关闭按钮) -->
-<!-- 3. 商店面板 (软木板风格) -->
+    <!-- 3. 商店面板 (软木板风格) -->
     <div id="shop-panel-container" class="hidden-bottom">
-        
+
         <!-- 背景板上的标题牌 -->
         <img src="./assets/ui/shop_title_sign.png" id="shop-title-img">
-        
+
         <!-- 关闭按钮 -->
         <button id="shop-close-btn" onclick="toggleShop()"></button>
 
@@ -198,7 +207,7 @@
         <div id="items-scroll">
             <!-- JS 动态填充 -->
         </div>
-        
+
         <!-- 2. 自定义滚动条组件 -->
         <div id="custom-scrollbar">
             <div id="custom-track"></div> <!-- 绳子 -->
@@ -209,18 +218,22 @@
 
 
 
-    <div id="context-menu"><div class="context-btn" id="btn-move">移动位置</div><div class="context-btn btn-delete" id="btn-delete">删除家具</div><div class="context-btn" id="btn-cancel">取消选中</div></div>
+    <div id="context-menu">
+        <div class="context-btn" id="btn-move">移动位置</div>
+        <div class="context-btn btn-delete" id="btn-delete">删除家具</div>
+        <div class="context-btn" id="btn-cancel">取消选中</div>
+    </div>
     <div id="cat-bubble" class="bubble hidden"><span id="bubble-icon">🐟</span></div>
-    
+
     <!-- 常驻状态面板 -->
 
 
-<!-- 日记本弹窗 (模态框) -->
+    <!-- 日记本弹窗 (模态框) -->
     <div id="diary-modal" class="hidden">
         <div id="diary-book-container">
             <!-- 关闭按钮 -->
             <button id="diary-close-btn" onclick="toggleDiary()"></button>
-            
+
             <!-- 日记书本背景 -->
             <img src="./assets/ui/diary_book_bg.png" id="diary-bg-img">
 
@@ -233,7 +246,7 @@
                     <img src="./assets/ui/diary_tape.png" class="polaroid-tape">
                     <span id="diary-photo-date" class="polaroid-text">Oct 24</span>
                     <span id="diary-photo-weather" class="polaroid-text">天气晴朗，适合睡觉</span>
-                    
+
                     <!-- [新增] 手动拍照按钮 -->
                     <button id="manual-photo-btn" onclick="window.takeManualPhoto()" title="拍一张今天的照片">
                         <img src="./assets/ui/camera_icon.png" alt="拍照">
@@ -249,10 +262,10 @@
                 <h3 id="diary-date-title" class="page-date-title">Oct 24</h3>
                 <!-- 心情/关键词 (从原来的div移过来) -->
                 <div id="diary-meta" class="page-meta">
-                    <span id="diary-weather">🌤️ 天气不错</span> | 
+                    <span id="diary-weather">🌤️ 天气不错</span> |
                     <span id="diary-mood">😾 心情一般</span>
                 </div>
-                
+
                 <!-- 日记条目容器 -->
                 <div id="diary-entries-scroll">
                     <!-- JS 会在这里填充日记条目 -->
@@ -288,7 +301,7 @@
                 <img src="./assets/ui/camera_button.png" id="camera-button-img">
             </button>
         </div>
-        
+
         <!-- 退出按钮 -->
         <button id="exit-photo-mode-btn" onclick="window.exitPhotoMode()">✕</button>
     </div>
@@ -301,4 +314,5 @@
     <script type="module" src="./scripts/main.js"></script>
     <!-- <script type="module" src="./scripts/main.new.js"></script> -->
 </body>
+
 </html>

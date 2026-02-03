@@ -12,7 +12,7 @@ export class GameSaveManager {
         this.saveKey = 'cat_game_save_v1';
         this.getGameData = getGameData;
         this.restoreCallbacks = restoreCallbacks;
-        
+
         // 自动保存间隔 (30秒)
         setInterval(() => this.saveGame(), 30000);
     }
@@ -26,7 +26,7 @@ export class GameSaveManager {
             // 1. 基础数据
             heartScore: data.heartScore,
             activeDecor: data.activeDecorId, // 装修状态
-            
+
             // 2. 猫咪状态 (只存一只)
             catStats: {
                 hunger: data.cats[0].stats.hunger,
@@ -40,7 +40,7 @@ export class GameSaveManager {
                     id: p.dbItem.id, // 核心ID
                     pos: { x: f.position.x, y: f.position.y, z: f.position.z },
                     rot: { y: f.rotation.y },
-                    funcState: p.functionalState, 
+                    funcState: p.functionalState,
                     isBox: p.isBox,
                     isTipped: p.isTipped,
                     boxHeight: p.boxHeight
@@ -60,7 +60,7 @@ export class GameSaveManager {
         try {
             const data = JSON.parse(json);
             const cb = this.restoreCallbacks;
-            
+
             // 1. 恢复金钱
             if (data.heartScore !== undefined && cb.setHeartScore) {
                 cb.setHeartScore(data.heartScore);
@@ -84,6 +84,23 @@ export class GameSaveManager {
 
         } catch (e) {
             console.error("Save file corrupted", e);
+            return false;
+        }
+    }
+
+    // [新增] 导出存档为 JSON 字符串
+    exportSave() {
+        return localStorage.getItem(this.saveKey) || '';
+    }
+
+    // [新增] 从 JSON 字符串导入存档
+    importSave(jsonString) {
+        try {
+            JSON.parse(jsonString); // 验证格式
+            localStorage.setItem(this.saveKey, jsonString);
+            return true;
+        } catch (e) {
+            console.error("Invalid save data", e);
             return false;
         }
     }

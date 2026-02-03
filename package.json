@@ -1,0 +1,12 @@
+{
+  "name": "cat-game",
+  "version": "1.0.0",
+  "description": "猫咪的家 - Web 3D 治愈系模拟游戏",
+  "scripts": {
+    "start": "live-server --port=5500 --open=index.html",
+    "dev": "live-server --port=5500 --open=index.html"
+  },
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}
