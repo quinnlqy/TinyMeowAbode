@@ -989,6 +989,7 @@ input[type=range] { flex: 1; cursor: pointer; height: 4px; accent-color: #ffaa00
 #diary-nav-buttons button img { width: 100%; height: 100%; object-fit: contain; }
 
 
+
 /* [新增] 右上角 Debug 工具栏样式 */
 #debug-panel {
     position: absolute;
@@ -1008,3 +1009,13 @@ input[type=range] { flex: 1; cursor: pointer; height: 4px; accent-color: #ffaa00
     cursor: pointer;
 }
 .debug-btn:hover { background: rgba(0, 0, 0, 0.8); }
+
+/* 只显示保存和读取按钮 */
+#debug-panel .debug-btn {
+    display: none;
+}
+
+#debug-panel .debug-btn:nth-child(11),
+#debug-panel .debug-btn:nth-child(12) {
+    display: inline-block;
+}
