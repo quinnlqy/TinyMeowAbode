@@ -3,15 +3,18 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="color-scheme" content="light">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&display=swap" rel="stylesheet">
-    <title>猫咪的家 - V91 细节精修版</title>
+    <title>Tiny Meow Abode - 方寸喵居</title>
     <!-- 外部CSS样式表 -->
     <link rel="stylesheet" href="./styles/main.css">
     <link rel="stylesheet" href="./styles/photo-mode.css">
+    <!-- [新增] 移动端响应式样式 -->
+    <link rel="stylesheet" href="./styles/mobile.css">
     <!-- 内联样式已迁移到 styles/main.css -->
     <script>
         function logToScreen(msg, type = 'info') {
@@ -30,14 +33,14 @@
 
 <body>
 
-    <div id="debug-console">V91 系统日志...</div>
+    <div id="debug-console">系统日志...</div>
 
     <div id="loading-screen">
         <div id="loading-text">资源加载中...</div>
         <div id="progress-bar">
             <div id="progress-fill"></div>
         </div>
-        <button id="force-start-btn" onclick="window.forceStart()">⚠️ 强制进入游戏</button>
+        <button id="force-start-btn" onclick="window.forceStart()" style="display:none;">⚠️ 强制进入游戏</button>
     </div>
 
     <div id="confirm-dialog">
@@ -52,7 +55,7 @@
 
 
     <div id="tutorial">
-        <strong>V91 细节精修版</strong><br>
+        <strong>方寸喵居 (Tiny Meow Abode)</strong><br>
         1. 修复猫咪睡觉"踢腿"/来回走<br>
         2. 吃饭对准/站猫砂盆上<br>
         3. 状态栏常驻左下角<br>
@@ -133,19 +136,20 @@
     <!-- [新增] 右上角 Debug 工具栏 HTML -->
     <div id="debug-panel">
         <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
-        <button class="debug-btn" onclick="debugResetCat()">重置猫</button>
-        <button class="debug-btn" onclick="window.debugCatInfo()">🐱 猫咪状态</button>
-        <button class="debug-btn" onclick="window.debugForceToilet()">🚽 上厕所</button>
-        <button class="debug-btn" onclick="toggleDebugGizmos()">线框</button>
-        <button class="debug-btn" onclick="toggleConsole()">📜 日志</button>
-        <button class="debug-btn" onclick="window.debugGenDiary()">📝 生成</button>
-        <button class="debug-btn" onclick="window.debugClearDiary()">🗑️ 清空</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="debugResetCat()">重置猫</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.debugCatInfo()">🐱 猫咪状态</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.debugForceToilet()">🚽 上厕所</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="toggleDebugGizmos()">线框</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="toggleConsole()">📜 日志</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.debugGenDiary()">📝 生成</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.debugClearDiary()">🗑️ 清空</button>
         <!-- [新增] 阴影开关按钮 -->
-        <button class="debug-btn" onclick="window.toggleShadows()">🌑 阴影</button>
-        <button class="debug-btn" onclick="window.toggleWeather()">🌤️ 天气</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.toggleShadows()">🌑 阴影</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.toggleWeather()">🌤️ 天气</button>
         <!-- [新增] 存档导出/导入按钮 -->
-        <button class="debug-btn" onclick="window.exportSaveToFile()">💾 导出</button>
-        <button class="debug-btn" onclick="window.importSaveFromFile()">📂 导入</button>
+        <button class="debug-btn" onclick="window.exportSaveToFile()">💾 保存</button>
+        <button class="debug-btn" onclick="window.importSaveFromFile()">📂 读取</button>
+        <button class="debug-btn" onclick="window.debugClearSave()" style="color:#ff6b6b;">🗑️ 清档</button>
     </div>
 
     <!-- 2. 底部：功能入口 -->
@@ -157,6 +161,13 @@
         <div class="hud-btn-container" onclick="toggleShop()">
             <img src="./assets/ui/btn_shop.png" class="hud-main-btn">
         </div>
+    </div>
+
+    <!-- [新增] 移动端专属操作栏（编辑模式时显示） -->
+    <div id="mobile-controls">
+        <button id="btn-mobile-cancel" class="mobile-ctrl-btn">❌</button>
+        <button id="btn-mobile-rotate" class="mobile-ctrl-btn">🔄</button>
+        <button id="btn-mobile-confirm" class="mobile-ctrl-btn">✅</button>
     </div>
 
     <!-- 3. 商店面板 (修改原有结构，增加关闭按钮) -->

@@ -1,7 +1,7 @@
 {
-  "name": "cat-game",
+  "name": "TinyMeowAbode",
   "version": "1.0.0",
-  "description": "猫咪的家 - Web 3D 治愈系模拟游戏",
+  "description": "方寸喵居 - 你的治愈系猫咪小家",
   "scripts": {
     "start": "live-server --port=5500 --open=index.html",
     "dev": "live-server --port=5500 --open=index.html"

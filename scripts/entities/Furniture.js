@@ -28,22 +28,44 @@ export class Furniture {
             this.initFunctionalState();
         }
 
-        // 载具属性
+        // 载具属性 - 三阶段扫地机器人 AI
         this.isVehicle = dbItem.isVehicle || false;
-        this.isMoving = true;
+
+        // 基础运动状态
+        this.isMoving = false;
         this.isTurning = false;
         this.targetRotation = 0;
-        this.moveTimer = 5 + Math.random() * 10;
-        this.pauseTimer = 0;
-        this.collisionCount = 0; // 连续碰撞计数器 (检测是否卡住)
-        
-        // [新增] 扫地机器人覆盖式清扫路径
-        this.sweepMode = 'zigzag'; // 'zigzag' = 之字形清扫, 'edge' = 沿边清扫
-        this.sweepDirection = 1;   // 1 = 正向, -1 = 反向 (用于之字形)
-        this.sweepLane = 0;        // 当前清扫的"行"
-        this.edgeWall = null;      // 当前沿着哪面墙清扫 ('north', 'south', 'east', 'west')
-        this.lastTurnWasCollision = false; // 上次转向是否因为碰撞
-        this.zigzagStepCount = 0;  // 之字形步数计数
+        this.turnSpeed = 2.0; // 弧度/秒
+
+        // 阶段状态机
+        this.robotPhase = 'WALL_FOLLOW';  // 'WALL_FOLLOW' | 'ZIGZAG' | 'RESCUE' | 'IDLE'
+        this.robotState = 'INIT';         // 当前子状态
+
+        // 第一阶段：边缘巡航 (Wall Following)
+        this.wallFollowStartPos = null;   // 起始位置
+        this.wallFollowDistance = 0;      // 已行驶距离
+        this.minLoopDistance = 8.0;       // 最小行驶距离才能判定闭环
+        this.wallDetectDistance = 0.5;    // 墙体检测距离
+        this.lastWallCheckRight = false;  // 上次右侧是否有墙
+
+        // 第二阶段：Z字形填充 (Zigzag Filling)
+        this.zigzagDirection = 1;         // 1=向东, -1=向西
+        this.zigzagRow = 0;               // 当前扫描行
+        this.brushWidth = 0.6;            // 刷头宽度（换行步长）
+        this.zigzagStartPos = null;       // Z字形起始位置
+        this.zigzagShiftStep = 0;         // 换行步骤计数 (0-3)
+        this.zigzagShiftDistance = 0;     // 换行已移动距离
+
+        // 救援模式：随机碰撞 (Random Bounce)
+        this.stuckCounter = 0;            // 连续碰撞计数
+        this.stuckThreshold = 5;          // 连续碰撞多少次视为卡住
+        this.rescueDuration = 0;          // 救援模式持续时间
+        this.rescueMaxDuration = 5.0;     // 最大救援时间（秒）
+        this.successMoveFrames = 0;       // 连续成功移动帧数
+
+        // 通用移动参数
+        this.moveSpeed = dbItem.moveSpeed || 1.5;
+        this.boundary = 4.3;              // 房间边界
 
         if (this.isVehicle && this.callbacks.logToScreen) {
             // this.callbacks.logToScreen(`Vehicle initialized: ${dbItem.id}`);
@@ -179,277 +201,463 @@ export class Furniture {
     update(dt) {
         if (!this.isVehicle) return;
 
-        // 1. 转向状态 (最高优先级)
-        if (this.isTurning) {
-            // 平滑旋转 logic
-            const rotateSpeed = 2.0; // 弧度/秒
-            let diff = this.targetRotation - this.mesh.rotation.y;
-            
-            // 规范化角度差到 [-PI, PI]
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
+        // 根据当前阶段执行不同逻辑
+        if (this.robotPhase === 'WALL_FOLLOW') {
+            this.updateWallFollowPhase(dt);
+        } else if (this.robotPhase === 'ZIGZAG') {
+            this.updateZigzagPhase(dt);
+        } else if (this.robotPhase === 'RESCUE') {
+            this.updateRescueMode(dt);
+        }
 
-            if (Math.abs(diff) < 0.05) {
-                // 旋转完成
-                this.mesh.rotation.y = this.targetRotation;
-                // 规范化当前角度
-                while (this.mesh.rotation.y > Math.PI) this.mesh.rotation.y -= Math.PI * 2;
-                while (this.mesh.rotation.y < -Math.PI) this.mesh.rotation.y += Math.PI * 2;
-                
-                this.isTurning = false;
-                this.isMoving = true; // 恢复移动
-                console.log(`[Robot] 转向完成，当前朝向: ${(this.mesh.rotation.y * 180 / Math.PI).toFixed(1)}度`);
-            } else {
-                // 插值旋转
-                const step = rotateSpeed * dt;
-                // 简单逼近
-                if (diff > 0) this.mesh.rotation.y += Math.min(diff, step);
-                else this.mesh.rotation.y -= Math.min(-diff, step);
+        // 更新骑乘者位置
+        if (this.rider && this.rider.mesh) {
+            const riderPos = this.mesh.position.clone();
+            riderPos.y += 0.15;
+            this.rider.mesh.position.copy(riderPos);
+            this.rider.mesh.rotation.y = this.mesh.rotation.y + Math.PI;
+        }
+    }
+
+    /**
+     * 第一阶段：边缘巡航 (Wall Following)
+     */
+    updateWallFollowPhase(dt) {
+        // 初始化阶段
+        if (this.robotState === 'INIT') {
+            this.wallFollowStartPos = this.mesh.position.clone();
+            this.wallFollowDistance = 0;
+            this.robotState = 'FINDING_WALL';
+            this.isMoving = true;
+            this.postTurnMoveDistance = 0; // 转向后移动距离
+            this.justTurnedForWall = false; // 是否刚为找墙而转向
+            console.log('[Robot Phase 1] 开始边缘巡航，寻找墙壁...');
+        }
+
+        // 处理转向
+        if (this.isTurning) {
+            this.performTurning(dt);
+            return;
+        }
+
+        // 寻找墙壁阶段
+        if (this.robotState === 'FINDING_WALL') {
+            const moveResult = this.tryMove(dt);
+            if (!moveResult.success) {
+                // 找到墙了，转向开始贴墙
+                console.log('[Robot Phase 1] 找到墙壁，开始贴墙行走');
+                this.turnClockwise90(); // 右转90度
+                this.robotState = 'FOLLOWING_WALL';
+                this.lastWallCheckRight = true; // 刚从墙边开始，假设右边有墙
+                this.postTurnMoveDistance = 0;
             }
             return;
         }
 
-        // 2. 移动状态
-        if (this.isMoving) {
-            // 移动逻辑
-            const speedPerSec = this.dbItem.moveSpeed || 1.5;
-            const moveStep = speedPerSec * dt;
+        // 贴墙行走阶段
+        if (this.robotState === 'FOLLOWING_WALL') {
+            const hasFrontObstacle = this.checkFrontObstacle();
 
-            const dir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
-            const currentPos = this.mesh.position;
-            const nextPos = currentPos.clone().add(dir.clone().multiplyScalar(moveStep));
-
-            // [边界检查] 房间范围 -4.5 ~ 4.5
-            const boundary = 4.3;
-            const hitBoundary = Math.abs(nextPos.x) > boundary || Math.abs(nextPos.z) > boundary;
-            
-            // [修复] 如果刚转向完成，先走几步再检测边界，避免死循环
-            if (this.justTurned) {
-                this.postTurnMoveCount++;
-                if (this.postTurnMoveCount > 30) { // 约 0.5 秒后恢复正常检测
-                    this.justTurned = false;
-                }
-            }
-            
-            // [修复] 如果刚转向，暂时不检测边界，但仍然强制限制在边界内
-            if (hitBoundary) {
-                if (this.justTurned) {
-                    // 刚转向，不触发再次转向，但限制位置
-                    nextPos.x = Math.max(-boundary, Math.min(boundary, nextPos.x));
-                    nextPos.z = Math.max(-boundary, Math.min(boundary, nextPos.z));
-                } else {
-                    console.log('[Robot] 撞墙边界，执行之字形转向');
-                    this.performZigzagTurn();
-                    return;
-                }
-            }
-
-            // [碰撞检查] - 使用实际模型包围盒进行碰撞检测
-            let hasCollision = false;
-            let collidedWith = null;
-            if (GameContext.placedFurniture) {
-                const lookAheadDist = 0.5;
-                const predictedPos = nextPos.clone();
-                predictedPos.add(dir.clone().multiplyScalar(lookAheadDist));
-                const robotRadius = 0.35;
-
-                for (const otherMesh of GameContext.placedFurniture) {
-                    if (otherMesh === this.mesh) continue;
-                    if (!otherMesh.userData || !otherMesh.userData.parentClass) continue;
-                    
-                    const dbItem = otherMesh.userData.parentClass.dbItem;
-                    if (!dbItem) continue;
-                    if (dbItem.layer === 0) continue;
-                    if (dbItem.type === 'wall') continue;
-                    if (dbItem.layer === 2) continue;
-                    if (dbItem.isVehicle) continue;
-                    
-                    const otherBox = new THREE.Box3().setFromObject(otherMesh);
-                    otherBox.expandByScalar(robotRadius);
-                    
-                    if (otherBox.containsPoint(predictedPos)) {
-                        hasCollision = true;
-                        collidedWith = dbItem.name || 'unknown';
-                        break;
-                    }
-                }
-            }
-
-            if (hasCollision) {
-                console.log(`[Robot] 检测到碰撞: ${collidedWith}`);
-                this.collisionCount++;
-                if (this.collisionCount > 4) {
-                    console.log("[Robot] 卡住了，随机换方向...");
-                    this.isMoving = false;
-                    this.pauseTimer = 2.0;
-                    this.collisionCount = 0;
-                    // 卡住后随机选择新方向
-                    this.sweepMode = Math.random() < 0.5 ? 'zigzag' : 'random';
-                } else {
-                    this.performZigzagTurn();
-                }
+            // 前方有墙，左转90度继续贴墙
+            if (hasFrontObstacle) {
+                console.log('[Robot Phase 1] 前方碰墙，左转90度');
+                this.turnCounterClockwise90();
+                this.postTurnMoveDistance = 0;
+                this.justTurnedForWall = false;
                 return;
             }
 
-            // 移动成功，重置碰撞计数
-            if (this.collisionCount > 0) this.collisionCount = Math.max(0, this.collisionCount - 0.1);
-            this.lastTurnWasCollision = false;
+            // 先尝试移动
+            const moveResult = this.tryMove(dt);
 
-            this.mesh.position.copy(nextPos);
-            this.zigzagStepCount++;
+            if (moveResult.success) {
+                this.wallFollowDistance += moveResult.distance;
+                this.postTurnMoveDistance += moveResult.distance;
 
-            // [新增] 之字形清扫：定期检查是否需要转向覆盖下一行
-            // 每走一段距离后，有概率切换到另一条清扫路线
-            if (this.sweepMode === 'zigzag' && this.zigzagStepCount > 200 && Math.random() < 0.02) {
-                console.log('[Robot] 之字形清扫：主动换行');
-                this.performZigzagTurn();
-                this.zigzagStepCount = 0;
-            }
+                // 只有走了一段距离后才检测右侧墙
+                if (this.postTurnMoveDistance > 0.3) {
+                    const hasRightWall = this.checkRightWall();
 
-            // [新增] 骑乘逻辑：如果有什么东西坐在我上面，带着它一起走
-            if (this.rider && this.rider.mesh) {
-                const riderPos = this.mesh.position.clone();
-                riderPos.y += 0.15;
-                this.rider.mesh.position.copy(riderPos);
-                this.rider.mesh.rotation.y = this.mesh.rotation.y + Math.PI;
-            }
+                    // 右侧墙消失了，右转试图找回墙
+                    if (!hasRightWall && this.lastWallCheckRight && !this.justTurnedForWall) {
+                        console.log('[Robot Phase 1] 右侧墙消失，右转找墙');
+                        this.turnClockwise90();
+                        this.postTurnMoveDistance = 0;
+                        this.justTurnedForWall = true; // 标记刚为找墙而转向
+                        return;
+                    }
 
-        } else {
-            // 3. 暂停状态
-            this.pauseTimer -= dt;
-            if (this.pauseTimer <= 0) {
-                this.isMoving = true;
-                this.moveTimer = 5 + Math.random() * 10;
-                // 暂停结束后，选择新的清扫方向
-                this.startSmartTurn();
-            }
-        }
-    }
+                    // 如果刚为找墙转向后，现在又检测到墙了，重置标记
+                    if (hasRightWall) {
+                        this.justTurnedForWall = false;
+                    }
 
-    /**
-     * [新增] 执行之字形转向
-     * 撞墙或碰撞后，转90度继续清扫
-     */
-    performZigzagTurn() {
-        this.isMoving = false;
-        this.isTurning = true;
-        this.zigzagStepCount = 0;
-        
-        // [修复] 设置刚转向标记，转向完成后需要先走一小段再检测边界
-        this.justTurned = true;
-        this.postTurnMoveCount = 0;
-
-        const currentRot = this.mesh.rotation.y;
-        
-        // 之字形清扫核心逻辑：
-        // 撞墙后，先转90度移动一小段，然后再转90度反向清扫
-        // 这样就能形成"回"字形或"之"字形的清扫路径
-        
-        // 计算当前主要朝向 (量化到4个方向)
-        const normalizedRot = ((currentRot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-        const facing = Math.round(normalizedRot / (Math.PI / 2)) % 4; // 0=北, 1=东, 2=南, 3=西
-        
-        // 交替左右转，模拟真实扫地机器人的覆盖式清扫
-        const turnDirection = this.sweepDirection;
-        this.sweepDirection *= -1; // 下次反向转
-        
-        // 转90度
-        const turnAngle = (Math.PI / 2) * turnDirection;
-        this.targetRotation = currentRot + turnAngle;
-        
-        console.log(`[Robot] 之字形转向: ${turnDirection > 0 ? '右转' : '左转'}90度`);
-    }
-
-    /**
-     * [新增] 智能转向 - 选择一个开阔的方向
-     */
-    startSmartTurn() {
-        this.isMoving = false;
-        this.isTurning = true;
-
-        const currentPos = this.mesh.position;
-        const currentRot = this.mesh.rotation.y;
-        const robotRadius = 0.35;
-        const boundary = 4.2;
-
-        // 检测多个方向的开阔程度
-        const directions = [];
-        for (let deg = 0; deg < 360; deg += 45) {
-            const rad = deg * (Math.PI / 180);
-            const testRot = rad;
-            
-            // 模拟在这个方向走一段距离
-            const dir = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), testRot);
-            
-            // 检测这个方向能走多远
-            let maxDist = 0;
-            for (let dist = 0.5; dist <= 3.0; dist += 0.5) {
-                const testPos = currentPos.clone().add(dir.clone().multiplyScalar(dist));
-                
-                // 边界检查
-                if (Math.abs(testPos.x) > boundary || Math.abs(testPos.z) > boundary) {
-                    break;
+                    this.lastWallCheckRight = hasRightWall;
                 }
-                
-                // 碰撞检查
-                let hasCollision = false;
-                if (GameContext.placedFurniture) {
-                    for (let otherMesh of GameContext.placedFurniture) {
-                        if (otherMesh === this.mesh) continue;
-                        if (!otherMesh.userData || !otherMesh.userData.parentClass) continue;
-                        
-                        const dbItem = otherMesh.userData.parentClass.dbItem;
-                        if (!dbItem) continue;
-                        if (dbItem.layer === 0 || dbItem.type === 'wall' || dbItem.layer === 2 || dbItem.isVehicle) continue;
-                        
-                        const otherBox = new THREE.Box3().setFromObject(otherMesh);
-                        otherBox.expandByScalar(robotRadius);
-                        
-                        if (otherBox.containsPoint(testPos)) {
-                            hasCollision = true;
-                            break;
-                        }
+
+                // 检测是否完成闭环
+                if (this.wallFollowDistance > this.minLoopDistance) {
+                    const distToStart = this.mesh.position.distanceTo(this.wallFollowStartPos);
+                    if (distToStart < 0.8) {
+                        console.log('[Robot Phase 1] 闭环完成！切换到Z字形填充阶段');
+                        this.switchToZigzagPhase();
                     }
                 }
-                
-                if (hasCollision) break;
-                maxDist = dist;
-            }
-            
-            directions.push({ deg, rad: testRot, maxDist });
-        }
-
-        // 按开阔程度排序，选择最开阔的方向（加入一点随机性）
-        directions.sort((a, b) => b.maxDist - a.maxDist);
-        
-        // 从前3个最开阔的方向中随机选一个
-        const topChoices = directions.slice(0, 3).filter(d => d.maxDist > 0.5);
-        if (topChoices.length > 0) {
-            const choice = topChoices[Math.floor(Math.random() * topChoices.length)];
-            this.targetRotation = choice.rad;
-            console.log(`[Robot] 智能转向: 选择${choice.deg}度方向，开阔距离${choice.maxDist.toFixed(1)}米`);
-        } else {
-            // 都堵住了，随机转
-            this.targetRotation = Math.random() * Math.PI * 2;
-            console.log('[Robot] 智能转向: 四面楚歌，随机转向');
-        }
-    }
-
-    startTurning(isBigTurn) {
-        // [修改] 直接调用之字形转向或智能转向
-        if (isBigTurn) {
-            this.performZigzagTurn();
-        } else {
-            // 碰撞时，有50%概率用之字形，50%用智能转向
-            if (Math.random() < 0.5) {
-                this.performZigzagTurn();
             } else {
-                this.startSmartTurn();
+                // 移动失败（碰到障碍），左转避开
+                console.log('[Robot Phase 1] 移动受阻，左转避开');
+                this.turnCounterClockwise90();
+                this.postTurnMoveDistance = 0;
             }
         }
     }
 
+    /**
+     * 第二阶段：Z字形填充 (Zigzag Filling)
+     */
+    updateZigzagPhase(dt) {
+        // 初始化阶段
+        if (this.robotState === 'INIT') {
+            // 移动到角落位置（简化：直接开始Z字形）
+            this.zigzagStartPos = this.mesh.position.clone();
+            this.zigzagDirection = 1; // 向东
+            this.zigzagRow = 0;
+            this.mesh.rotation.y = 0; // 朝向东
+            this.robotState = 'ZIGZAG_HORIZONTAL';
+            this.isMoving = true;
+            console.log('[Robot Phase 2] 开始Z字形填充...');
+        }
+
+        // 处理转向
+        if (this.isTurning) {
+            this.performTurning(dt);
+            return;
+        }
+
+        // 横向扫描
+        if (this.robotState === 'ZIGZAG_HORIZONTAL') {
+            const moveResult = this.tryMove(dt);
+
+            if (!moveResult.success) {
+                // 碰到边界或障碍，开始换行
+                console.log(`[Robot Phase 2] 第${this.zigzagRow}行扫描完成，准备换行`);
+                this.robotState = 'ZIGZAG_SHIFTING';
+                this.zigzagShiftStep = 0;
+                this.zigzagShiftDistance = 0;
+                this.startZigzagShift();
+            } else {
+                // 成功移动，重置卡住计数
+                this.stuckCounter = Math.max(0, this.stuckCounter - 0.1);
+            }
+        }
+
+        // 换行过程
+        if (this.robotState === 'ZIGZAG_SHIFTING') {
+            if (this.zigzagShiftStep === 1) {
+                // 步骤1：前进刷头宽度
+                const moveResult = this.tryMove(dt, this.brushWidth - this.zigzagShiftDistance);
+                this.zigzagShiftDistance += moveResult.distance;
+
+                if (this.zigzagShiftDistance >= this.brushWidth - 0.05 || !moveResult.success) {
+                    // 完成前进或碰到障碍
+                    if (!moveResult.success && this.zigzagShiftDistance < this.brushWidth * 0.3) {
+                        // 刚开始就碰到了，说明无法继续换行，清扫完成
+                        console.log('[Robot Phase 2] 无法继续换行，Z字形填充完成！');
+                        this.switchToIdlePhase();
+                        return;
+                    }
+                    this.zigzagShiftStep = 2;
+                    this.startZigzagShift();
+                }
+            }
+        }
+    }
+
+    /**
+     * 救援模式：随机碰撞 (Random Bounce)
+     */
+    updateRescueMode(dt) {
+        if (this.robotState === 'INIT') {
+            this.rescueDuration = 0;
+            this.successMoveFrames = 0;
+            this.robotState = 'RANDOM_BOUNCE';
+            // 随机选择一个方向
+            this.mesh.rotation.y = Math.random() * Math.PI * 2;
+            this.isMoving = true;
+            console.log('[Robot RESCUE] 进入救援模式，随机移动脱困...');
+        }
+
+        // 处理转向
+        if (this.isTurning) {
+            this.performTurning(dt);
+            return;
+        }
+
+        this.rescueDuration += dt;
+
+        const moveResult = this.tryMove(dt);
+
+        if (moveResult.success) {
+            this.successMoveFrames++;
+            // 连续成功移动足够长，说明脱困了
+            if (this.successMoveFrames > 30) {
+                console.log('[Robot RESCUE] 脱困成功！返回边缘巡航模式');
+                this.switchToWallFollowPhase();
+                return;
+            }
+        } else {
+            // 碰到障碍，随机转向
+            this.successMoveFrames = 0;
+            this.mesh.rotation.y = Math.random() * Math.PI * 2;
+        }
+
+        // 超时退出
+        if (this.rescueDuration > this.rescueMaxDuration) {
+            console.log('[Robot RESCUE] 救援超时，返回边缘巡航模式');
+            this.switchToWallFollowPhase();
+        }
+    }
+
+    /**
+     * 尝试移动
+     * @param {number} dt Delta time
+     * @param {number} maxDistance 最大移动距离（可选）
+     * @returns {Object} { success: boolean, distance: number }
+     */
+    tryMove(dt, maxDistance = null) {
+        const moveStep = this.moveSpeed * dt;
+        const actualStep = maxDistance !== null ? Math.min(moveStep, maxDistance) : moveStep;
+
+        const dir = new THREE.Vector3(0, 0, 1)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
+
+        const currentPos = this.mesh.position;
+        const nextPos = currentPos.clone().add(dir.clone().multiplyScalar(actualStep));
+
+        // 边界检查
+        if (Math.abs(nextPos.x) > this.boundary || Math.abs(nextPos.z) > this.boundary) {
+            this.stuckCounter++;
+            this.checkIfStuck();
+            return { success: false, distance: 0 };
+        }
+
+        // 碰撞检查
+        const lookAheadDist = 0.4;
+        const predictedPos = currentPos.clone().add(dir.clone().multiplyScalar(actualStep + lookAheadDist));
+
+        if (this.hasObstacleAt(predictedPos)) {
+            this.stuckCounter++;
+            this.checkIfStuck();
+            return { success: false, distance: 0 };
+        }
+
+        // 移动成功
+        this.mesh.position.copy(nextPos);
+        return { success: true, distance: actualStep };
+    }
+
+    /**
+     * 执行转向动作
+     */
+    performTurning(dt) {
+        let diff = this.targetRotation - this.mesh.rotation.y;
+
+        // 规范化角度差到 [-PI, PI]
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+
+        if (Math.abs(diff) < 0.05) {
+            // 转向完成
+            this.mesh.rotation.y = this.targetRotation;
+            this.normalizeRotation();
+            this.isTurning = false;
+            this.isMoving = true;
+        } else {
+            // 插值旋转
+            const step = this.turnSpeed * dt;
+            if (diff > 0) this.mesh.rotation.y += Math.min(diff, step);
+            else this.mesh.rotation.y -= Math.min(-diff, step);
+        }
+    }
+
+    /**
+     * 规范化角度到 [-PI, PI]
+     */
+    normalizeRotation() {
+        while (this.mesh.rotation.y > Math.PI) this.mesh.rotation.y -= Math.PI * 2;
+        while (this.mesh.rotation.y < -Math.PI) this.mesh.rotation.y += Math.PI * 2;
+    }
+
+    /**
+     * 检测右侧是否有墙
+     */
+    checkRightWall() {
+        const rightDir = new THREE.Vector3(1, 0, 0)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
+
+        const checkPos = this.mesh.position.clone()
+            .add(rightDir.multiplyScalar(this.wallDetectDistance));
+
+        return this.hasObstacleAt(checkPos) || this.isNearBoundary(checkPos, 0.3);
+    }
+
+    /**
+     * 检测前方是否有障碍
+     */
+    checkFrontObstacle() {
+        const frontDir = new THREE.Vector3(0, 0, 1)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.mesh.rotation.y);
+
+        const checkPos = this.mesh.position.clone()
+            .add(frontDir.multiplyScalar(this.wallDetectDistance));
+
+        return this.hasObstacleAt(checkPos) || this.isNearBoundary(checkPos, 0.2);
+    }
+
+    /**
+     * 检测指定位置是否有障碍物
+     */
+    hasObstacleAt(position) {
+        if (!GameContext.placedFurniture) return false;
+
+        const robotRadius = 0.35;
+
+        for (const otherMesh of GameContext.placedFurniture) {
+            if (otherMesh === this.mesh) continue;
+            if (!otherMesh.userData || !otherMesh.userData.parentClass) continue;
+
+            const dbItem = otherMesh.userData.parentClass.dbItem;
+            if (!dbItem) continue;
+            if (dbItem.layer === 0) continue; // 忽略地板
+            if (dbItem.type === 'wall') continue; // 忽略墙面装饰
+            if (dbItem.layer === 2) continue; // 忽略小物件
+            if (dbItem.isVehicle) continue; // 忽略其他载具
+
+            const otherBox = new THREE.Box3().setFromObject(otherMesh);
+            otherBox.expandByScalar(robotRadius);
+
+            if (otherBox.containsPoint(position)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 检测是否接近边界
+     */
+    isNearBoundary(position, threshold = 0.2) {
+        return Math.abs(position.x) > this.boundary - threshold ||
+            Math.abs(position.z) > this.boundary - threshold;
+    }
+
+    /**
+     * 顺时针转90度（右转）
+     */
+    turnClockwise90() {
+        this.isMoving = false;
+        this.isTurning = true;
+        this.targetRotation = this.mesh.rotation.y - Math.PI / 2;
+    }
+
+    /**
+     * 逆时针转90度（左转）
+     */
+    turnCounterClockwise90() {
+        this.isMoving = false;
+        this.isTurning = true;
+        this.targetRotation = this.mesh.rotation.y + Math.PI / 2;
+    }
+
+    /**
+     * 检测是否卡住，触发救援模式
+     */
+    checkIfStuck() {
+        if (this.stuckCounter > this.stuckThreshold) {
+            console.log('[Robot] 检测到卡住，切换到救援模式！');
+            this.switchToRescueMode();
+        }
+    }
+
+    /**
+     * 开始Z字形换行
+     */
+    startZigzagShift() {
+        if (this.zigzagShiftStep === 0) {
+            // 步骤0：第一次转向
+            if (this.zigzagDirection === 1) {
+                // 刚才向东，右转
+                this.turnClockwise90();
+            } else {
+                // 刚才向西，左转
+                this.turnCounterClockwise90();
+            }
+            this.zigzagShiftStep = 1;
+        } else if (this.zigzagShiftStep === 2) {
+            // 步骤2：第二次转向
+            if (this.zigzagDirection === 1) {
+                // 右转（现在朝西）
+                this.turnClockwise90();
+            } else {
+                // 左转（现在朝东）
+                this.turnCounterClockwise90();
+            }
+            this.zigzagShiftStep = 3;
+            // 换向
+            this.zigzagDirection *= -1;
+            this.zigzagRow++;
+            this.robotState = 'ZIGZAG_HORIZONTAL';
+            console.log(`[Robot Phase 2] 开始第${this.zigzagRow}行扫描`);
+        }
+    }
+
+    /**
+     * 切换到Z字形填充阶段
+     */
+    switchToZigzagPhase() {
+        this.robotPhase = 'ZIGZAG';
+        this.robotState = 'INIT';
+        this.stuckCounter = 0;
+    }
+
+    /**
+     * 切换到救援模式
+     */
+    switchToRescueMode() {
+        this.robotPhase = 'RESCUE';
+        this.robotState = 'INIT';
+        this.stuckCounter = 0;
+    }
+
+    /**
+     * 切换到边缘巡航阶段
+     */
+    switchToWallFollowPhase() {
+        this.robotPhase = 'WALL_FOLLOW';
+        this.robotState = 'INIT';
+        this.stuckCounter = 0;
+    }
+
+    /**
+     * 切换到待机阶段
+     */
+    switchToIdlePhase() {
+        this.robotPhase = 'IDLE';
+        this.robotState = 'IDLE';
+        this.isMoving = false;
+        console.log('[Robot] 清扫完成，进入待机模式');
+
+        // 循环：重新开始边缘巡航
+        setTimeout(() => {
+            this.switchToWallFollowPhase();
+        }, 3000);
+    }
+
+    /**
+     * 旧方法兼容性（用于其他系统调用）
+     */
     turnRandomly() {
-        this.startTurning(false);
+        // 随机转向
+        this.mesh.rotation.y = Math.random() * Math.PI * 2;
     }
 }

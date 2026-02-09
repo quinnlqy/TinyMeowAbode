@@ -90,6 +90,9 @@ export class Cat {
     }
 
     update(dt) {
+        // [修复] 限制 dt 最大值，防止切换窗口后一帧移动过远
+        dt = Math.min(dt, 0.1);
+
         if (this.isAnimated && this.mixer) this.mixer.update(dt);
 
         this.decayStats(dt);
@@ -147,6 +150,15 @@ export class Cat {
             this.mesh.lookAt(camera.position.x, this.mesh.position.y, camera.position.z);
         }
         else if (this.state === 'riding') { this.handleRidingLogic(dt); }
+
+        // [修复] 边界检查：确保猫咪始终在房间范围内
+        const ROOM_BOUNDARY = 4.5;
+        if (this.state !== 'dragged') {
+            this.mesh.position.x = Math.max(-ROOM_BOUNDARY, Math.min(ROOM_BOUNDARY, this.mesh.position.x));
+            this.mesh.position.z = Math.max(-ROOM_BOUNDARY, Math.min(ROOM_BOUNDARY, this.mesh.position.z));
+            // 确保不会掉到地面以下
+            if (this.mesh.position.y < 0) this.mesh.position.y = 0;
+        }
     }
 
     handleIdleLogic(dt) {
@@ -171,7 +183,7 @@ export class Cat {
             this.chooseNewAction();
             return;
         }
-        
+
         // [修复] 绑定 rider 引用，让载具知道谁在骑它
         vehicle.rider = this;
 
@@ -185,7 +197,7 @@ export class Cat {
         const vehiclePos = this.interactTarget.position;
         this.mesh.position.copy(vehiclePos);
         this.mesh.position.y = 0.15; // [修正] 降低高度 (扫地机器人很薄)
-        
+
         // [修复] 猫咪应该和扫地机器人同方向旋转
         // 由于猫咪模型和机器人模型的朝向可能相差 180 度，需要加上 Math.PI
         // 这样当机器人顺时针旋转时，猫咪也会顺时针旋转（而不是逆时针）
@@ -195,18 +207,18 @@ export class Cat {
         this.ridingTimer -= dt;
         if (this.ridingTimer <= 0) {
             console.log('[Cat] 骑乘时间到，准备下车');
-            
+
             // [修复] 保存下车前的位置，用于计算下车方向
             const dismountBasePos = this.mesh.position.clone();
             const vehicleRotation = this.interactTarget.rotation.y;
-            
+
             console.log(`[Cat] 下车基准位置: (${dismountBasePos.x.toFixed(2)}, ${dismountBasePos.z.toFixed(2)}), 载具朝向: ${(vehicleRotation * 180 / Math.PI).toFixed(1)}度`);
-            
+
             // [修复] 先清除载具的 rider 引用，防止被拉回去
             if (vehicle) {
                 vehicle.rider = null;
             }
-            
+
             // [修复] 先清除所有相关引用，再改变状态
             this.ridingVehicle = null;
             this.interactTarget = null;
@@ -252,12 +264,12 @@ export class Cat {
                     // [修复] 使用实际模型包围盒 (红色线框) 进行碰撞检测
                     // 但只检查 X-Z 平面，不考虑高度 (猫只需要检查地面空间)
                     const box = new THREE.Box3().setFromObject(f);
-                    
+
                     // 检查 testPos 是否在 box 的 X-Z 投影内
                     // 不使用 containsPoint 因为高度会干扰判断
                     const inXRange = testPos.x >= box.min.x - 0.2 && testPos.x <= box.max.x + 0.2;
                     const inZRange = testPos.z >= box.min.z - 0.2 && testPos.z <= box.max.z + 0.2;
-                    
+
                     if (inXRange && inZRange) {
                         hasCollision = true;
                         collidedWith = item.name;
@@ -374,14 +386,14 @@ export class Cat {
 
     tryAvoidObstacle(blockedDir, obstacleMeshes) {
         this.avoidCounter++;
-        
+
         // [修复] 如果避障次数过多，说明卡住了，放弃当前目标
         if (this.avoidCounter > 8) {
             console.log('[Cat] 避障失败次数过多，放弃当前目标');
             this.avoidCounter = 0;
             this.isAvoiding = false;
             this.stuckCounter++;
-            
+
             // [修复] 如果连续多次卡住，随机传送到一个安全位置
             if (this.stuckCounter > 3) {
                 console.log('[Cat] 严重卡住，随机传送');
@@ -391,7 +403,7 @@ export class Cat {
                 this.mesh.position.z = (Math.random() - 0.5) * 4;
                 this.mesh.position.y = 0;
             }
-            
+
             this.chooseNewAction();
             return;
         }
@@ -408,7 +420,7 @@ export class Cat {
             Math.PI * 3 / 4, -Math.PI * 3 / 4, // 135度
             Math.PI                            // 180度 (掉头)
         ];
-        
+
         const testRay = new THREE.Raycaster();
         const catPos = this.mesh.position.clone().add(new THREE.Vector3(0, 0.3, 0));
 
@@ -446,7 +458,7 @@ export class Cat {
         const backDir = blockedDir.clone().negate();
         const backPos = this.mesh.position.clone().add(backDir.multiplyScalar(0.5));
         backPos.y = 0;
-        
+
         // 边界检查
         if (Math.abs(backPos.x) < 4.5 && Math.abs(backPos.z) < 4.5) {
             this.stopPos.copy(backPos);

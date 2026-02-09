@@ -7,15 +7,15 @@ export const WEATHER_CONFIG = {
     // 月度天气概率配置 (1-12月)
     monthly_probability: {
         1: { rain: 0, snow: 0.2 },   // 1月：下雪20%
-        2: { rain: 0, snow: 0.1 },   // 2月：下雪10%
-        3: { rain: 0, snow: 0 },     // 3月：无雨雪
-        4: { rain: 0, snow: 0 },     // 4月：无雨雪
-        5: { rain: 0, snow: 0 },     // 5月：无雨雪
-        6: { rain: 0, snow: 0 },     // 6月：无雨雪
-        7: { rain: 0, snow: 0 },     // 7月：无雨雪
-        8: { rain: 0, snow: 0 },     // 8月：无雨雪
-        9: { rain: 0, snow: 0 },     // 9月：无雨雪
-        10: { rain: 0, snow: 0.1 },  // 10月：下雪10%
+        2: { rain: 0, snow: 0.3 },   // 2月：下雪30%
+        3: { rain: 0.2, snow: 0 },     // 3月：无雨雪
+        4: { rain: 0.5, snow: 0 },     // 4月：无雨雪
+        5: { rain: 0.3, snow: 0 },     // 5月：无雨雪
+        6: { rain: 0.3, snow: 0 },     // 6月：无雨雪
+        7: { rain: 0.3, snow: 0 },     // 7月：无雨雪
+        8: { rain: 0.4, snow: 0 },     // 8月：无雨雪
+        9: { rain: 0.2, snow: 0 },     // 9月：无雨雪
+        10: { rain: 0.2, snow: 0.1 },  // 10月：下雪10%
         11: { rain: 0, snow: 0.2 },  // 11月：下雪20%
         12: { rain: 0, snow: 0.5 }   // 12月：下雪50%
     },

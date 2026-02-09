@@ -69,6 +69,9 @@ let attachedItems = [];
 let longPressTimer = null, startPointer = new THREE.Vector2();
 let inputManager = null;
 
+// === [新增] 移动端检测 ===
+const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
 const obstacles = []; const placedFurniture = []; const cats = [];
 let heartScore = 500; let currentCategory = 'furniture'; let activeDecorId = { floor: null, wall: null }; let skyPanels = [];
 let pendingInteraction = null;
@@ -817,6 +820,11 @@ window.switchCategory = function (cat) {
 
 window.forceStart = function () { const ls = document.getElementById('loading-screen'); if (ls) ls.style.display = 'none'; if (!scene) startGame(); }
 window.debugAddMoney = function () { updateMoney(100); };
+window.debugClearSave = function () {
+    localStorage.clear();
+    alert('存档已清除，页面将重新加载');
+    location.reload();
+};
 window.debugResetCat = function () { cats.forEach(c => c.resetCooldown()); updateStatusText("猫咪不再生气了"); };
 
 // [新增] 强制猫咪上厕所的GM功能
@@ -1123,7 +1131,7 @@ function renderShopItems(cat) {
                 tooltip.id = 'furniture-tooltip';
                 tooltip.style.cssText = `
                             position: fixed;
-                            background: url('../assets/ui/FurnitureName_Bg.png') no-repeat center/contain;
+                            background: url('./assets/ui/FurnitureName_Bg.png') no-repeat center/contain;
                             color: #5d4037;
                             width: 120px;
                             height: 32px;
@@ -1191,8 +1199,14 @@ function renderShopItems(cat) {
         card.appendChild(shelf);
 
         // 2. 商品图标 (Icon)
-        // 检查是否有 iconFile 定义，或者拼凑路径 assets/ui/items/icon_{id}.png
-        const iconPath = `./assets/ui/items/icon_${item.id}.png`;
+        // [优化] 优先使用 item.iconFile，否则尝试拼凑 assets/ui/items/icon_{id}.png
+        let iconPath;
+        if (item.iconFile) {
+            iconPath = `./assets/ui/items/${item.iconFile}`;
+        } else {
+            // 默认尝试 .png
+            iconPath = `./assets/ui/items/icon_${item.id}.png`;
+        }
 
         const iconImg = document.createElement('img');
         iconImg.className = 'item-icon';
@@ -1240,7 +1254,44 @@ window.startNewPlacement = function (id) {
     const item = FURNITURE_DB.find(i => i.id === id);
     if (heartScore < item.price && !activeDecorId[item.decorType]) { alert("金钱不足"); return; }
     if (item.type === 'decor') { handleDecorClick(item); return; }
-    deselect(); mode = 'placing_new'; currentItemData = item; currentRotation = 0; createGhost(); updateStatusText("放置: " + item.name); document.querySelectorAll('.item-btn').forEach(b => b.classList.remove('selected'));
+
+    deselect();
+    mode = 'placing_new';
+    currentItemData = item;
+    currentRotation = 0;
+    createGhost();
+    updateStatusText("放置: " + item.name);
+    document.querySelectorAll('.item-btn').forEach(b => b.classList.remove('selected'));
+
+    // === [新增] 移动端专属逻辑 ===
+    if (isMobile) {
+        // 0. 禁用相机旋转，防止拖拽家具时场景跟着转
+        if (inputManager) inputManager.disableControls();
+
+        // 1. 将家具放置在房间中央（简化逻辑，避免摄像机计算问题）
+        if (ghostMesh) {
+            // 地面家具放在中央
+            if (item.type === 'wall') {
+                // 墙上物品放在后墙中央
+                ghostMesh.position.set(0, 1.5, -3.5);
+            } else {
+                // 普通家具放在地面中央
+                ghostMesh.position.set(0, 0, 0);
+            }
+            console.log('[Mobile] Ghost position set to:', ghostMesh.position);
+        }
+
+        // 2. 显示移动端操作栏
+        const mobileControls = document.getElementById('mobile-controls');
+        if (mobileControls) mobileControls.style.display = 'flex';
+
+        // 3. 隐藏底部 UI（商店、HUD底栏）
+        document.getElementById('shop-panel-container')?.classList.add('hidden-in-edit-mode');
+        document.getElementById('hud-bottom-bar')?.classList.add('hidden-in-edit-mode');
+
+        // 4. 默认可以放置（因为在房间中心，通常不会碰撞）
+        canPlace = true;
+    }
 }
 
 function handleDecorClick(item) {
@@ -1420,8 +1471,22 @@ function onDown(e) {
     if (e.target !== renderer.domElement) return;
     startPointer.x = e.clientX; startPointer.y = e.clientY;
 
-    if (mode === 'idle' && e.button === 0) {
+    // [修复] 触摸事件兼容：触摸时 e.button 可能是 0 或 -1，统一处理为"主要点击"
+    const isPrimaryClick = e.button === 0 || e.pointerType === 'touch';
+
+    // [修复] 在点击时更新 pointer 坐标，避免使用旧的 onMove 坐标
+    pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+    pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+    if (mode === 'idle' && isPrimaryClick) {
         raycaster.setFromCamera(pointer, camera);
+
+        // [调试] 移动端触摸点击日志
+        if (isMobile) {
+            console.log('[Mobile Touch] pointer:', pointer.x.toFixed(3), pointer.y.toFixed(3));
+            const allHits = raycaster.intersectObjects(placedFurniture, true);
+            console.log('[Mobile Touch] furniture hits:', allHits.length, allHits.map(h => h.object.name || h.object.uuid.slice(0, 8)));
+        }
 
         // 1. 优先检测猫咪
         let catHit = null;
@@ -1486,12 +1551,18 @@ function onDown(e) {
         }
     }
     if (e.button === 1 && ghostMesh && currentItemData.type !== 'wall') { e.preventDefault(); rotateItem(); return; }
-    if (e.button === 0 && (mode === 'placing_new' || mode === 'moving_old') && canPlace && ghostMesh) confirmPlace();
+    // [修复] PC 端：点击地面确认放置；移动端：通过操作栏"确定"按钮确认（不在这里处理）
+    if (!isMobile && isPrimaryClick && (mode === 'placing_new' || mode === 'moving_old') && canPlace && ghostMesh) confirmPlace();
 }
 
 function onUp() {
     // 恢复视角控制
-    controls.enabled = true;
+    // [修复] 移动端：摆放家具模式下不要恢复相机控制，直到确认/取消
+    if (isMobile && (mode === 'placing_new' || mode === 'moving_old')) {
+        // 保持禁用状态
+    } else {
+        controls.enabled = true;
+    }
 
     if (draggingCat) {
         draggingCat.setDragged(false);
@@ -1511,8 +1582,29 @@ function onUp() {
 
 function selectObj(m, x, y) { deselect(); selectedObject = m; selectionBox = new THREE.BoxHelper(selectedObject, 0xffffff); scene.add(selectionBox); const menu = document.getElementById('context-menu'); menu.style.display = 'flex'; let px = x + 10, py = y + 10; if (px + 100 > window.innerWidth) px = window.innerWidth - 110; if (py + 100 > window.innerHeight) py = window.innerHeight - 110; menu.style.left = px + 'px'; menu.style.top = py + 'px'; updateStatusText("选中: 家具"); }
 function deselect() { selectedObject = null; if (selectionBox) { scene.remove(selectionBox); selectionBox = null; } document.getElementById('context-menu').style.display = 'none'; }
-function cancelPlace() { if (ghostMesh) scene.remove(ghostMesh); mode = 'idle'; ghostMesh = null; currentItemData = null; updateStatusText("浏览中"); }
+function cancelPlace() {
+    if (ghostMesh) scene.remove(ghostMesh);
+    mode = 'idle';
+    ghostMesh = null;
+    currentItemData = null;
+    updateStatusText("浏览中");
+
+    // === [新增] 移动端：隐藏操作栏并恢复底部UI ===
+    if (isMobile) {
+        // 恢复相机控制
+        if (inputManager) inputManager.enableControls();
+
+        const mobileControls = document.getElementById('mobile-controls');
+        if (mobileControls) mobileControls.style.display = 'none';
+
+        document.getElementById('shop-panel-container')?.classList.remove('hidden-in-edit-mode');
+        document.getElementById('hud-bottom-bar')?.classList.remove('hidden-in-edit-mode');
+    }
+}
 function cancelMove() {
+    // [新增] 移动端：恢复相机控制
+    if (isMobile && inputManager) inputManager.enableControls();
+
     if (mode === 'moving_old') {
         if (ghostMesh) scene.remove(ghostMesh);
 
@@ -1540,6 +1632,9 @@ function hideContextMenu() { document.getElementById('context-menu').style.displ
 function startMovingOld(m) {
     mode = 'moving_old';
     selectedObject = m; // 记录当前正在搬运的真身
+
+    // [新增] 移动端：禁用相机旋转
+    if (isMobile && inputManager) inputManager.disableControls();
 
     // 1. 隐藏真身
     m.visible = false;
@@ -1847,24 +1942,17 @@ function updateCameraMovement(dt) {
 function animate() {
     requestAnimationFrame(animate);
     const dt = gameClock.getDelta();
+
+    // 更新核心游戏逻辑（如果页面可见）
+    if (!document.hidden) {
+        updateGameLogic(dt);
+    }
+
+    // 更新渲染（只在页面可见时）
     updateCameraMovement(dt);
     controls.update();
     updateEnvironment(dt);
-    cats.forEach(c => c.update(dt));
     if (selectionBox) selectionBox.update();
-
-    // [新增] 更新家具逻辑 (扫地机器人)
-    placedFurniture.forEach(mesh => {
-        if (mesh.userData && mesh.userData.parentClass && typeof mesh.userData.parentClass.update === 'function') {
-            // if (mesh.userData.parentClass.isVehicle) console.log("Calling update on vehicle");
-            mesh.userData.parentClass.update(dt);
-        }
-    });
-
-    // [新增] 每帧检查天气（只会在日期变化时触发）
-    if (weatherSystem) {
-        weatherSystem.checkDailyWeather();
-    }
 
     // [新增] 更新照片系统（自动拍照检查）
     if (photoManager) photoManager.update();
@@ -1874,6 +1962,69 @@ function animate() {
     if (composer) composer.render();    // <-- 改用这行
     else renderer.render(scene, camera); // 降级兼容
 }
+
+// [新增] 核心游戏逻辑更新函数（可在后台调用）
+function updateGameLogic(dt) {
+    // 限制 dt 最大值，防止切换窗口后一帧更新过多
+    dt = Math.min(dt, 0.1);
+
+    cats.forEach(c => c.update(dt));
+
+    // 更新家具逻辑 (扫地机器人)
+    placedFurniture.forEach(mesh => {
+        if (mesh.userData && mesh.userData.parentClass && typeof mesh.userData.parentClass.update === 'function') {
+            mesh.userData.parentClass.update(dt);
+        }
+    });
+
+    // 每帧检查天气（只会在日期变化时触发）
+    if (weatherSystem) {
+        weatherSystem.checkDailyWeather();
+    }
+}
+
+// [新增] 后台更新机制：即使页面不可见，也持续更新游戏逻辑
+let backgroundUpdateInterval = null;
+let lastBackgroundUpdate = Date.now();
+
+function startBackgroundUpdate() {
+    if (backgroundUpdateInterval) return;
+
+    lastBackgroundUpdate = Date.now();
+
+    // 每 500ms 更新一次游戏逻辑
+    backgroundUpdateInterval = setInterval(() => {
+        const now = Date.now();
+        const dt = (now - lastBackgroundUpdate) / 1000;
+        lastBackgroundUpdate = now;
+
+        // 只更新游戏逻辑，不渲染
+        updateGameLogic(dt);
+    }, 500);
+
+    console.log('[Background] 后台更新已启动');
+}
+
+function stopBackgroundUpdate() {
+    if (backgroundUpdateInterval) {
+        clearInterval(backgroundUpdateInterval);
+        backgroundUpdateInterval = null;
+        console.log('[Background] 后台更新已停止');
+    }
+}
+
+// [新增] 监听页面可见性变化
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        // 页面隐藏，启动后台更新
+        startBackgroundUpdate();
+    } else {
+        // 页面恢复可见，停止后台更新
+        stopBackgroundUpdate();
+        // 重置时钟，防止返回时出现巨大的 dt
+        gameClock.getDelta();
+    }
+});
 
 function startGame() {
     try {
@@ -2210,6 +2361,29 @@ function startGame() {
         document.getElementById('btn-delete').onclick = () => { if (selectedObject) deleteSelected(); hideContextMenu(); }
         document.getElementById('btn-cancel').onclick = () => { deselect(); hideContextMenu(); }
 
+        // === [新增] 移动端操作栏按钮事件绑定 ===
+        if (isMobile) {
+            document.getElementById('btn-mobile-cancel').onclick = () => {
+                cancelPlace();
+            };
+
+            document.getElementById('btn-mobile-rotate').onclick = () => {
+                if (ghostMesh && mode === 'placing_new') {
+                    currentRotation += Math.PI / 2;
+                    ghostMesh.rotation.y = currentRotation;
+                }
+            };
+
+            document.getElementById('btn-mobile-confirm').onclick = () => {
+                if (mode === 'placing_new' && canPlace && ghostMesh) {
+                    confirmPlace();
+                } else if (!canPlace) {
+                    // 无法放置时给予反馈
+                    updateStatusText("无法放置在此处");
+                }
+            };
+        }
+
         // === [新增] 在 startGame 底部调用后期处理初始化 ===
         composer = initPostProcessing(renderer, scene, camera);
 
@@ -2451,6 +2625,43 @@ function setupCustomScrollbar() {
 
     // 初始化一次
     updateThumbPosition();
+
+    // === 4. [新增] 触摸事件支持（移动端拖拽滑块）===
+    thumb.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        thumb.dataset.isDragging = 'true';
+        thumb.style.transition = 'none';
+
+        const touch = e.touches[0];
+        const startX = touch.clientX;
+        const startLeft = parseFloat(thumb.style.left || 0);
+        const trackWidth = track.clientWidth;
+        const thumbWidth = 50;
+        const maxLeft = trackWidth - thumbWidth;
+        const maxScrollLeft = container.scrollWidth - container.clientWidth;
+
+        function onTouchMove(moveEvent) {
+            const moveTouch = moveEvent.touches[0];
+            const deltaX = moveTouch.clientX - startX;
+            let newLeft = startLeft + deltaX;
+
+            if (newLeft < 0) newLeft = 0;
+            if (newLeft > maxLeft) newLeft = maxLeft;
+
+            thumb.style.left = newLeft + 'px';
+            const ratio = newLeft / maxLeft;
+            container.scrollLeft = ratio * maxScrollLeft;
+        }
+
+        function onTouchEnd() {
+            thumb.dataset.isDragging = 'false';
+            document.removeEventListener('touchmove', onTouchMove);
+            document.removeEventListener('touchend', onTouchEnd);
+        }
+
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onTouchEnd);
+    }, { passive: false });
 }
 
 window.toggleShop = function () {
@@ -2540,6 +2751,17 @@ window.gmCatRide = function () {
     } else {
         console.log("GM: Cat or Robot not found.");
     }
+};
+
+// [新增] GM 指令：显示所有隐藏的调试按钮
+// 在控制台输入 showDebug() 即可
+window.showDebug = function () {
+    const btns = document.querySelectorAll('.debug-only');
+    btns.forEach(btn => {
+        btn.style.display = 'inline-block';
+    });
+    console.log("配置已启用：调试按钮已显示");
+    updateStatusText("Debug模式已开启");
 };
 
 init();
