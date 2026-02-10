@@ -18,6 +18,9 @@ export class Cat {
         this.targetPos = new THREE.Vector3(); this.stopPos = new THREE.Vector3();
         this.jumpStart = new THREE.Vector3(); this.jumpEnd = new THREE.Vector3();
         this.interactTarget = null; this.timer = 0; this.mixer = null; this.actions = {}; this.isAnimated = false;
+        this.walkingTimer = 0; // [修复] 行走状态超时计时器
+        this.lastPos = new THREE.Vector3(); // [修复] 记录上一帧位置，检测卡住
+        this.stuckTime = 0; // [修复] 连续卡住时间
         this.petCount = 0; this.patience = 5 + Math.floor(Math.random() * 6); this.angryTime = 0;
         this.sleepMinDuration = 0;
         this.dismountCooldown = 0; // [修复] 下车后的冷却时间，防止立即再次上车
@@ -314,10 +317,52 @@ export class Cat {
     handleWalkingLogic(dt) {
         const placedFurniture = GameContext.placedFurniture;
 
+        // [修复] 行走超时检测 - 防止猫一直死走
+        this.walkingTimer += dt;
+        if (this.walkingTimer > 15) {
+            console.log(`[Cat] 行走超时(${this.walkingTimer.toFixed(1)}s)，放弃目标，重新决策`);
+            this.walkingTimer = 0;
+            this.isAvoiding = false;
+            this.state = 'idle';
+            this.timer = 1;
+            this.targetFurniture = null;
+            this.interactTarget = null;
+            this.nextAction = null;
+            return;
+        }
+
+        // [修复] 检测卡在边界上 - 如果连续1.5秒几乎没移动，说明卡住了
+        const movedDist = this.mesh.position.distanceTo(this.lastPos);
+        if (movedDist < 0.01) {
+            this.stuckTime += dt;
+            if (this.stuckTime > 1.5) {
+                console.log(`[Cat] 检测到卡住(${this.stuckTime.toFixed(1)}s未移动)，pos=(${this.mesh.position.x.toFixed(2)}, ${this.mesh.position.z.toFixed(2)})，目标=(${this.stopPos.x.toFixed(2)}, ${this.stopPos.z.toFixed(2)})`);
+                this.stuckTime = 0;
+                this.walkingTimer = 0;
+                this.isAvoiding = false;
+                this.state = 'idle';
+                this.timer = 1;
+                this.targetFurniture = null;
+                this.interactTarget = null;
+                this.nextAction = null;
+                return;
+            }
+        } else {
+            this.stuckTime = 0;
+        }
+        this.lastPos.copy(this.mesh.position);
+
         this.playAction('walk');
         const dir = new THREE.Vector3().subVectors(this.stopPos, this.mesh.position);
         dir.y = 0;
         const dist = dir.length();
+
+        // [修复] 如果stopPos在房间边界外，钳制到边界内，避免猫走进墙里
+        const STOP_BOUNDARY = 4.3; // 略小于4.5，留一点缓冲
+        if (Math.abs(this.stopPos.x) > STOP_BOUNDARY || Math.abs(this.stopPos.z) > STOP_BOUNDARY) {
+            this.stopPos.x = Math.max(-STOP_BOUNDARY, Math.min(STOP_BOUNDARY, this.stopPos.x));
+            this.stopPos.z = Math.max(-STOP_BOUNDARY, Math.min(STOP_BOUNDARY, this.stopPos.z));
+        }
 
         // [修复] 检查是否已经离目标足够近，可以直接到达
         let closeEnoughToTarget = false;
@@ -352,6 +397,7 @@ export class Cat {
         }
 
         if (dist < 0.1) {
+            this.walkingTimer = 0; // 到达目的地，重置计时器
             if (this.isAvoiding && this.originalTargetPos) {
                 this.isAvoiding = false;
                 const vec = new THREE.Vector3().subVectors(this.mesh.position, this.originalTargetPos);
@@ -648,10 +694,12 @@ export class Cat {
         const isDay = (visualHour >= 6 && visualHour < 18);
 
         this.hideBubble();
+        this.walkingTimer = 0; // [修复] 重置行走计时器
 
         if (this.stats.hunger < 40) {
             const foodBowl = this.findAvailableFurniture('food', 'full');
             if (foodBowl) {
+                console.log(`[Cat] 饥饿(${this.stats.hunger.toFixed(0)})，去找猫碗吃饭`);
                 this.interactTarget = foodBowl;
                 this.targetFurniture = foodBowl;
                 this.setPath(foodBowl.position, 0.5);
@@ -666,6 +714,7 @@ export class Cat {
         if (this.stats.toilet < 40) {
             const litterBox = this.findAvailableFurniture('toilet', 'clean');
             if (litterBox) {
+                console.log(`[Cat] 内急(${this.stats.toilet.toFixed(0)})，去找猫砂盆`);
                 this.interactTarget = litterBox;
                 this.targetFurniture = litterBox;
                 this.setPath(litterBox.position, 0.6);
@@ -722,8 +771,11 @@ export class Cat {
         }
 
         if (target) {
+            const parentClass = target.userData.parentClass;
+            const name = parentClass?.dbItem?.name || '未知家具';
+            console.log(`[Cat] 决定去: ${name}，pos=(${target.position.x.toFixed(2)}, ${target.position.z.toFixed(2)})`);
             this.interactTarget = target;
-            const dist = (target.userData.parentClass.dbItem.canSleep) ? 0.5 : 0.7;
+            const dist = (parentClass.dbItem.canSleep) ? 0.5 : 0.7;
             this.setPath(target.position, dist);
             this.state = 'walking';
         }
@@ -731,6 +783,7 @@ export class Cat {
             this.lastInteractTarget = null;
             this.interactTarget = null;
             const randPos = generateWanderTarget(this.mesh.position, 1, 4);
+            console.log(`[Cat] 随机闲逛，目标=(${randPos.x.toFixed(2)}, ${randPos.z.toFixed(2)})`);
             this.setPath(randPos);
             this.state = 'walking';
         }

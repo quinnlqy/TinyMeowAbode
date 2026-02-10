@@ -49,17 +49,23 @@
         /* 不占满全宽 */
         max-width: 550px !important;
         height: 240px !important;
-        /* 增加高度 */
-        border-width: 20px !important;
-        border-image-slice: 80 fill !important;
-        border-image-width: 20px !important;
-        
+
+        /* [修复] 手机端放弃border-image（触摸滚动时会闪烁/消失） */
+        /* 改用background-image，在GPU合成层上更稳定 */
+        border: none !important;
+        border-image: none !important;
+        background-image: url('../assets/ui/shop_bg_board.png') !important;
+        background-size: 100% 100% !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+
+        /* [补偿] 原来border:20px占的空间，改用padding模拟 */
+        padding: 20px !important;
+
         /* 改为居中显示，不是底部 */
-        bottom: 0px !important;
-        /* 距离底部80px */
+        bottom: -10px !important;
         left: 50% !important;
         transform: translateX(-50%) !important;
-        /* 水平居中 */
     }
 
     /* [修复] 确保关闭状态下完全不可见 */
@@ -111,6 +117,13 @@
         padding: 60px 10px 30px 10px !important;
         /* 顶部留出60px给标签栏 */
         gap: 12px !important;
+
+        /* [修复] 优化触摸滚动，防止滚动时父容器border-image闪烁 */
+        -webkit-overflow-scrolling: touch;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
     }
 
     /* 商品卡片 - 调整大小 */
@@ -144,7 +157,7 @@
 
     /* 自定义滚动条 - 调整 */
     #custom-scrollbar {
-        bottom: -20px !important;
+        bottom: 0px !important;
     }
 
     #custom-thumb {
@@ -246,7 +259,7 @@
     #debug-panel .debug-btn {
         display: none !important;
     }
-    
+
     /* 只显示保存按钮（倒数第3个）和读取按钮（倒数第2个）*/
     #debug-panel .debug-btn:nth-child(11),
     #debug-panel .debug-btn:nth-child(12) {
@@ -283,11 +296,10 @@
         /* 调整最大宽度 */
 
         /* 使用竖版背景图 */
-        background-image: url('../assets/ui/diary_book_Vertical_bg.png') !important;
-        background-size: contain !important;
-        /* 改为contain确保完整显示不裁切 */
-        background-repeat: no-repeat !important;
-        background-position: center !important;
+        /* 使用竖版背景图 - 使用shorthand写法增强兼容性 */
+        background: url('../assets/ui/diary_book_Vertical_bg.png') no-repeat center center / contain !important;
+        background-color: transparent !important;
+        /* 确保背景色透明，避免覆盖图片 */
 
         box-shadow: none !important;
         padding: 45px 25px 80px 25px !important;

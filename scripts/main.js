@@ -30,6 +30,13 @@ setTimeout(() => { const ls = document.getElementById('loading-screen'); if (ls 
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
+window.GAME_VERSION = "v1.0.1 (Debug)";
+console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
+
+// 更新 Loading Screen 的版本号
+const verEl = document.getElementById('version-text');
+if (verEl) verEl.innerText = window.GAME_VERSION;
+
 let weatherSystem; // 全局变量
 
 const audioManager = new AudioManager();
@@ -71,6 +78,7 @@ let inputManager = null;
 
 // === [新增] 移动端检测 ===
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+console.log(`[Device Check] isMobile: ${isMobile}, maxTouchPoints: ${navigator.maxTouchPoints}`);
 
 const obstacles = []; const placedFurniture = []; const cats = [];
 let heartScore = 500; let currentCategory = 'furniture'; let activeDecorId = { floor: null, wall: null }; let skyPanels = [];
@@ -1131,7 +1139,7 @@ function renderShopItems(cat) {
                 tooltip.id = 'furniture-tooltip';
                 tooltip.style.cssText = `
                             position: fixed;
-                            background: url('./assets/ui/FurnitureName_Bg.png') no-repeat center/contain;
+                            background: url('./assets/ui/furniture_name_bg.png') no-repeat center/contain;
                             color: #5d4037;
                             width: 120px;
                             height: 32px;
@@ -1289,8 +1297,8 @@ window.startNewPlacement = function (id) {
         document.getElementById('shop-panel-container')?.classList.add('hidden-in-edit-mode');
         document.getElementById('hud-bottom-bar')?.classList.add('hidden-in-edit-mode');
 
-        // 4. 默认可以放置（因为在房间中心，通常不会碰撞）
-        canPlace = true;
+        // 4. [修复] 进行一次碰撞检测，而不是无脑允许放置
+        checkColl(item.type === 'wall');
     }
 }
 
@@ -1655,7 +1663,20 @@ function startMovingOld(m) {
 
     // 3. 创建主体的虚影
     createGhost();
+    createGhost();
     updateStatusText("正在移动...");
+
+    // === [修复] 移动端：显示操作栏 ===
+    if (isMobile) {
+        const mobileControls = document.getElementById('mobile-controls');
+        if (mobileControls) mobileControls.style.display = 'flex';
+
+        document.getElementById('shop-panel-container')?.classList.add('hidden-in-edit-mode');
+        document.getElementById('hud-bottom-bar')?.classList.add('hidden-in-edit-mode');
+
+        // 立即检测一次碰撞，更新 ghost 颜色
+        checkColl(currentItemData.type === 'wall');
+    }
 
     // === [新增] 连带移动逻辑：寻找桌子上的东西 ===
     attachedItems = []; // 清空缓存
@@ -1883,17 +1904,22 @@ function onWindowResize() {
 
     // [新增] 更新天空 Shader 的分辨率
     if (weatherSystem && weatherSystem.skyMat) {
-        weatherSystem.skyMat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+        // [修复] 使用 renderer.getDrawingBufferSize 或 domElement.width/height (物理像素)
+        // 之前用 window.inner* (CSS像素) 导致在高分屏手机上 gl_FragCoord 超出了范围，天空变成霓虹色
+        const pixelRatio = renderer.getPixelRatio();
+        weatherSystem.skyMat.uniforms.resolution.value.set(
+            window.innerWidth * pixelRatio,
+            window.innerHeight * pixelRatio
+        );
+
         // 同步更新窗户材质的分辨率
         weatherSystem.windowMaterials.forEach(mat => {
             if (mat && mat.uniforms && mat.uniforms.resolution) {
-                mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+                mat.uniforms.resolution.value.copy(weatherSystem.skyMat.uniforms.resolution.value);
             }
         });
     }
-
-
-
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 }
 
 
@@ -2060,6 +2086,16 @@ function startGame() {
         // [新增] 初始化天候系统
         weatherSystem = new WeatherSystem(scene, updateStatusText);
         weatherSystem.updateSkyColor(visualHour, true);
+
+        // [修复] 初始化时也需要设置正确的分辨率 (物理像素)
+        //防止高分屏手机刚进游戏时天空颜色异常
+        const pixelRatio = renderer.getPixelRatio();
+        if (weatherSystem.skyMat) {
+            weatherSystem.skyMat.uniforms.resolution.value.set(
+                window.innerWidth * pixelRatio,
+                window.innerHeight * pixelRatio
+            );
+        }
 
         // [新增] 将天气系统关联到日记管理器，并检查每日天气
         if (window.diaryManager) {

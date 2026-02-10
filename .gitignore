@@ -1,0 +1,17 @@
+# System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+npm-debug.log*
+
+# Node modules
+node_modules/
+
+# VS Code
+.vscode/
+
+# Temporary files
+~$*
+*.tmp

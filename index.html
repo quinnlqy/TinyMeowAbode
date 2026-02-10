@@ -29,6 +29,12 @@
         }
         window.onerror = function (msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); document.getElementById('force-start-btn').style.display = 'block'; return false; };
     </script>
+    <!-- Mobile Console Debugging -->
+    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+    <script>
+        // Initialize vConsole
+        var vConsole = new VConsole();
+    </script>
 </head>
 
 <body>
@@ -40,6 +46,8 @@
         <div id="progress-bar">
             <div id="progress-fill"></div>
         </div>
+        <div id="version-text"
+            style="position:absolute; bottom:10px; right:10px; color:rgba(255,255,255,0.5); font-size:12px;"></div>
         <button id="force-start-btn" onclick="window.forceStart()" style="display:none;">⚠️ 强制进入游戏</button>
     </div>
 
@@ -135,7 +143,7 @@
 
     <!-- [新增] 右上角 Debug 工具栏 HTML -->
     <div id="debug-panel">
-        <button class="debug-btn" onclick="debugAddMoney()">+$$</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="debugAddMoney()">+$$</button>
         <button class="debug-btn debug-only" style="display:none;" onclick="debugResetCat()">重置猫</button>
         <button class="debug-btn debug-only" style="display:none;" onclick="window.debugCatInfo()">🐱 猫咪状态</button>
         <button class="debug-btn debug-only" style="display:none;" onclick="window.debugForceToilet()">🚽 上厕所</button>
@@ -149,7 +157,8 @@
         <!-- [新增] 存档导出/导入按钮 -->
         <button class="debug-btn" onclick="window.exportSaveToFile()">💾 保存</button>
         <button class="debug-btn" onclick="window.importSaveFromFile()">📂 读取</button>
-        <button class="debug-btn" onclick="window.debugClearSave()" style="color:#ff6b6b;">🗑️ 清档</button>
+        <button class="debug-btn debug-only" style="display:none;" onclick="window.debugClearSave()"
+            style="color:#ff6b6b;">🗑️ 清档</button>
     </div>
 
     <!-- 2. 底部：功能入口 -->

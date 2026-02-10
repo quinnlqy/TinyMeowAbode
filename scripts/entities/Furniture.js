@@ -231,7 +231,7 @@ export class Furniture {
             this.isMoving = true;
             this.postTurnMoveDistance = 0; // 转向后移动距离
             this.justTurnedForWall = false; // 是否刚为找墙而转向
-            console.log('[Robot Phase 1] 开始边缘巡航，寻找墙壁...');
+            console.debug('[Robot Phase 1] 开始边缘巡航，寻找墙壁...');
         }
 
         // 处理转向
@@ -245,7 +245,7 @@ export class Furniture {
             const moveResult = this.tryMove(dt);
             if (!moveResult.success) {
                 // 找到墙了，转向开始贴墙
-                console.log('[Robot Phase 1] 找到墙壁，开始贴墙行走');
+                console.debug('[Robot Phase 1] 找到墙壁，开始贴墙行走');
                 this.turnClockwise90(); // 右转90度
                 this.robotState = 'FOLLOWING_WALL';
                 this.lastWallCheckRight = true; // 刚从墙边开始，假设右边有墙
