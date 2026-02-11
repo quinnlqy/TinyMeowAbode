@@ -1,0 +1,6 @@
+v1.3 hotfix: Mobile touch fixes, version sync
+
+- Fix diary entries not scrollable on mobile (wrong touchmove whitelist selector)
+- Fix time slider not draggable on mobile (add #time-popover to touchmove whitelist)
+- Sync version display to v1.3 in index.html and main.js
+- Auto-update #game-version element from GAME_VERSION variable

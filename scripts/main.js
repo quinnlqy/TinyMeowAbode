@@ -97,12 +97,15 @@ const pendingWindowMaterials = [];
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.1";
+window.GAME_VERSION = "v1.3";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // 更新 Loading Screen 的版本号
 const verEl = document.getElementById('version-text');
 if (verEl) verEl.innerText = window.GAME_VERSION;
+// 同步右上角版本号
+const gameVerEl = document.getElementById('game-version');
+if (gameVerEl) gameVerEl.innerText = window.GAME_VERSION;
 
 let weatherSystem; // 全局变量
 
@@ -158,7 +161,7 @@ if (isMobile) {
     // 阻止 touchmove 引起的页面滚动/橡皮筋效果
     // 但放行商店滚动区和日记面板等可滚动区域
     document.addEventListener('touchmove', e => {
-        if (e.target.closest('#items-scroll') || e.target.closest('.diary-entries') || e.target.closest('#confirm-dialog')) return;
+        if (e.target.closest('#items-scroll') || e.target.closest('#diary-entries-scroll') || e.target.closest('#confirm-dialog') || e.target.closest('#time-popover')) return;
         e.preventDefault();
     }, { passive: false });
 
