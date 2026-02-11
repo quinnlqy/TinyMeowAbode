@@ -29,6 +29,20 @@ export class Cat {
         this.downRay = new THREE.Raycaster(); this.downRay.ray.direction.set(0, -1, 0);
         this.forwardRay = new THREE.Raycaster();
 
+        // [优化] 预分配复用对象，避免每帧 new Vector3/clone 导致 GC 压力
+        this._rayOrigin = new THREE.Vector3();
+        this._rayDir = new THREE.Vector3(0, -1, 0);
+        this._walkDir = new THREE.Vector3();
+        this._forwardDir = new THREE.Vector3();
+        this._forwardRayOrigin = new THREE.Vector3();
+        this._distToTarget = new THREE.Vector3();
+        this._bubblePos = new THREE.Vector3();
+        this._avoidTestOrigin = new THREE.Vector3();
+        this._avoidRotatedDir = new THREE.Vector3();
+        this._avoidTestPos = new THREE.Vector3();
+        this._dismountDir = new THREE.Vector3();
+        this._dismountTestPos = new THREE.Vector3();
+
         try {
             const loadedModels = GameContext.loadedModels;
             if (loadedModels && loadedModels['cat']) {
@@ -64,11 +78,12 @@ export class Cat {
     updateBubblePosition() {
         if (!this.bubbleEl || this.bubbleEl.classList.contains('hidden')) return;
         const camera = GameContext.camera;
-        const pos = this.mesh.position.clone();
-        pos.y += 0.6; // [修正] 降低高度 (从1.2改到0.6)
-        pos.project(camera);
-        const x = (pos.x * .5 + .5) * window.innerWidth;
-        const y = (-(pos.y * .5) + .5) * window.innerHeight;
+        // [优化] 复用预分配的 _bubblePos 代替 this.mesh.position.clone()
+        this._bubblePos.copy(this.mesh.position);
+        this._bubblePos.y += 0.6;
+        this._bubblePos.project(camera);
+        const x = (this._bubblePos.x * .5 + .5) * window.innerWidth;
+        const y = (-(this._bubblePos.y * .5) + .5) * window.innerHeight;
         this.bubbleEl.style.left = `${x}px`;
         this.bubbleEl.style.top = `${y}px`;
     }
@@ -131,7 +146,9 @@ export class Cat {
 
         // [修复] 在 pooping/riding 状态下，不执行地面检测
         if (this.state !== 'jumping' && this.state !== 'pooping' && this.state !== 'riding') {
-            const rayOrigin = this.mesh.position.clone(); rayOrigin.y = 5; this.downRay.set(rayOrigin, new THREE.Vector3(0, -1, 0));
+            // [优化] 复用预分配的 _rayOrigin 代替 .clone() + new Vector3
+            this._rayOrigin.set(this.mesh.position.x, 5, this.mesh.position.z);
+            this.downRay.set(this._rayOrigin, this._rayDir);
             // [修复] 排除 isVehicle (扫地机器人)，防止猫把它当成地板踩上去，导致卡住或浮空
             const hitCandidates = [floorPlane, ...placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.dbItem && f.userData.parentClass.dbItem.layer === 1 && !f.userData.parentClass.isBox && !f.userData.parentClass.dbItem.isVehicle)];
             const hits = this.downRay.intersectObjects(hitCandidates, true); let targetY = 0; if (hits.length > 0) targetY = hits[0].point.y;
@@ -254,14 +271,15 @@ export class Cat {
 
             for (let i = 0; i < tryAngles.length; i++) {
                 const ang = tryAngles[i];
-                const dir = new THREE.Vector3(Math.sin(ang), 0, Math.cos(ang));
-                const testPos = dismountBasePos.clone().add(dir.multiplyScalar(0.8));
-                testPos.y = 0;
+                // [优化] 复用预分配对象
+                this._dismountDir.set(Math.sin(ang), 0, Math.cos(ang));
+                this._dismountTestPos.copy(dismountBasePos).add(this._dismountDir.multiplyScalar(0.8));
+                this._dismountTestPos.y = 0;
 
-                console.log(`[Cat] 尝试${angleNames[i]}下车: (${testPos.x.toFixed(2)}, ${testPos.z.toFixed(2)})`);
+                console.log(`[Cat] 尝试${angleNames[i]}下车: (${this._dismountTestPos.x.toFixed(2)}, ${this._dismountTestPos.z.toFixed(2)})`);
 
                 // 边界检查
-                if (Math.abs(testPos.x) > 4.5 || Math.abs(testPos.z) > 4.5) {
+                if (Math.abs(this._dismountTestPos.x) > 4.5 || Math.abs(this._dismountTestPos.z) > 4.5) {
                     console.log(`[Cat] ${angleNames[i]}超出边界`);
                     continue;
                 }
@@ -279,10 +297,9 @@ export class Cat {
                     // 但只检查 X-Z 平面，不考虑高度 (猫只需要检查地面空间)
                     const box = new THREE.Box3().setFromObject(f);
 
-                    // 检查 testPos 是否在 box 的 X-Z 投影内
-                    // 不使用 containsPoint 因为高度会干扰判断
-                    const inXRange = testPos.x >= box.min.x - 0.2 && testPos.x <= box.max.x + 0.2;
-                    const inZRange = testPos.z >= box.min.z - 0.2 && testPos.z <= box.max.z + 0.2;
+                    // 检查 this._dismountTestPos 是否在 box 的 X-Z 投影内
+                    const inXRange = this._dismountTestPos.x >= box.min.x - 0.2 && this._dismountTestPos.x <= box.max.x + 0.2;
+                    const inZRange = this._dismountTestPos.z >= box.min.z - 0.2 && this._dismountTestPos.z <= box.max.z + 0.2;
 
                     if (inXRange && inZRange) {
                         hasCollision = true;
@@ -295,7 +312,7 @@ export class Cat {
                     console.log(`[Cat] ${angleNames[i]}有障碍物: ${collidedWith}`);
                 } else {
                     console.log(`[Cat] ${angleNames[i]}可以下车!`);
-                    bestPos = testPos;
+                    bestPos = this._dismountTestPos.clone(); // 需要 clone 因为循环会覆写
                     break;
                 }
             }
@@ -307,8 +324,8 @@ export class Cat {
                 // 如果四面楚歌，向载具的右后方跳远一点
                 console.log('[Cat] 四面楚歌，尝试跳远一点');
                 const escapeAngle = vehicleRotation + Math.PI * 0.75;
-                const escapeDir = new THREE.Vector3(Math.sin(escapeAngle), 0, Math.cos(escapeAngle));
-                this.mesh.position.copy(dismountBasePos).add(escapeDir.multiplyScalar(1.2));
+                this._dismountDir.set(Math.sin(escapeAngle), 0, Math.cos(escapeAngle));
+                this.mesh.position.copy(dismountBasePos).add(this._dismountDir.multiplyScalar(1.2));
                 // 边界限制
                 this.mesh.position.x = Math.max(-4.5, Math.min(4.5, this.mesh.position.x));
                 this.mesh.position.z = Math.max(-4.5, Math.min(4.5, this.mesh.position.z));
@@ -364,9 +381,10 @@ export class Cat {
         this.lastPos.copy(this.mesh.position);
 
         this.playAction('walk');
-        const dir = new THREE.Vector3().subVectors(this.stopPos, this.mesh.position);
-        dir.y = 0;
-        const dist = dir.length();
+        // [优化] 复用预分配的 _walkDir 代替 new THREE.Vector3()
+        this._walkDir.subVectors(this.stopPos, this.mesh.position);
+        this._walkDir.y = 0;
+        const dist = this._walkDir.length();
 
         // [修复] 如果stopPos在房间边界外，钳制到边界内，避免猫走进墙里
         const STOP_BOUNDARY = 4.3; // 略小于4.5，留一点缓冲
@@ -379,17 +397,20 @@ export class Cat {
         let closeEnoughToTarget = false;
         if (this.interactTarget || this.targetFurniture) {
             const target = this.targetFurniture || this.interactTarget;
-            const distToTarget = new THREE.Vector3().subVectors(target.position, this.mesh.position);
-            distToTarget.y = 0;
-            // 如果离目标已经很近 (< 1.2)，就不再避障，直接走过去
-            if (distToTarget.length() < 1.2) {
+            // [优化] 复用预分配的 _distToTarget 代替 new THREE.Vector3()
+            this._distToTarget.subVectors(target.position, this.mesh.position);
+            this._distToTarget.y = 0;
+            if (this._distToTarget.length() < 1.2) {
                 closeEnoughToTarget = true;
             }
         }
 
         if (dist > 0.5 && !closeEnoughToTarget) {
-            const forwardDir = dir.clone().normalize();
-            this.forwardRay.set(this.mesh.position.clone().add(new THREE.Vector3(0, 0.3, 0)), forwardDir);
+            // [优化] 复用预分配的 _forwardDir 代替 dir.clone().normalize()
+            this._forwardDir.copy(this._walkDir).normalize();
+            this._forwardRayOrigin.copy(this.mesh.position);
+            this._forwardRayOrigin.y += 0.3;
+            this.forwardRay.set(this._forwardRayOrigin, this._forwardDir);
 
             const obstacleMeshes = placedFurniture.filter(f => {
                 const isInteractTarget = (this.interactTarget && f === this.interactTarget);
@@ -402,7 +423,7 @@ export class Cat {
 
             const cols = this.forwardRay.intersectObjects(obstacleMeshes, true);
             if (cols.length > 0 && cols[0].distance < 0.4) {
-                this.tryAvoidObstacle(forwardDir, obstacleMeshes);
+                this.tryAvoidObstacle(this._forwardDir, obstacleMeshes);
                 return;
             }
         }
@@ -411,10 +432,11 @@ export class Cat {
             this.walkingTimer = 0; // 到达目的地，重置计时器
             if (this.isAvoiding && this.originalTargetPos) {
                 this.isAvoiding = false;
-                const vec = new THREE.Vector3().subVectors(this.mesh.position, this.originalTargetPos);
-                vec.y = 0;
-                vec.normalize();
-                this.stopPos.copy(this.originalTargetPos).add(vec.multiplyScalar(this.targetStopDist || 0.7));
+                // [优化] 复用 _walkDir 代替 new THREE.Vector3()
+                this._walkDir.subVectors(this.mesh.position, this.originalTargetPos);
+                this._walkDir.y = 0;
+                this._walkDir.normalize();
+                this.stopPos.copy(this.originalTargetPos).add(this._walkDir.multiplyScalar(this.targetStopDist || 0.7));
                 return;
             }
 
@@ -428,8 +450,8 @@ export class Cat {
             }
             this.onArriveDest();
         } else {
-            dir.normalize();
-            this.mesh.position.add(dir.multiplyScalar(2.0 * dt));
+            this._walkDir.normalize();
+            this.mesh.position.add(this._walkDir.multiplyScalar(2.0 * dt));
             this.mesh.lookAt(this.stopPos.x, this.mesh.position.y, this.stopPos.z);
         }
     }
@@ -479,29 +501,31 @@ export class Cat {
         ];
 
         const testRay = new THREE.Raycaster();
-        const catPos = this.mesh.position.clone().add(new THREE.Vector3(0, 0.3, 0));
+        // [优化] 复用预分配对象
+        this._avoidTestOrigin.copy(this.mesh.position);
+        this._avoidTestOrigin.y += 0.3;
 
         for (let angle of angles) {
-            const rotatedDir = blockedDir.clone();
+            this._avoidRotatedDir.copy(blockedDir);
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
-            const newX = rotatedDir.x * cos - rotatedDir.z * sin;
-            const newZ = rotatedDir.x * sin + rotatedDir.z * cos;
-            rotatedDir.x = newX;
-            rotatedDir.z = newZ;
-            rotatedDir.normalize();
+            const newX = this._avoidRotatedDir.x * cos - this._avoidRotatedDir.z * sin;
+            const newZ = this._avoidRotatedDir.x * sin + this._avoidRotatedDir.z * cos;
+            this._avoidRotatedDir.x = newX;
+            this._avoidRotatedDir.z = newZ;
+            this._avoidRotatedDir.normalize();
 
-            testRay.set(catPos, rotatedDir);
+            testRay.set(this._avoidTestOrigin, this._avoidRotatedDir);
             const hits = testRay.intersectObjects(obstacleMeshes, true);
 
             // [修复] 检查边界
-            const testPos = this.mesh.position.clone().add(rotatedDir.clone().multiplyScalar(0.8));
-            if (Math.abs(testPos.x) > 4.5 || Math.abs(testPos.z) > 4.5) {
+            this._avoidTestPos.copy(this.mesh.position).add(this._avoidRotatedDir.clone().multiplyScalar(0.8));
+            if (Math.abs(this._avoidTestPos.x) > 4.5 || Math.abs(this._avoidTestPos.z) > 4.5) {
                 continue; // 会撞墙，跳过
             }
 
             if (hits.length === 0 || hits[0].distance > 0.8) {
-                const avoidPoint = this.mesh.position.clone().add(rotatedDir.multiplyScalar(0.8));
+                const avoidPoint = this.mesh.position.clone().add(this._avoidRotatedDir.multiplyScalar(0.8));
                 avoidPoint.y = 0;
                 this.stopPos.copy(avoidPoint);
                 // [修复] 重置卡住计数器

@@ -100,6 +100,43 @@ const pendingWindowMaterials = [];
 window.GAME_VERSION = "v1.3";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
+// [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
+window.showCrashLog = function() {
+    const logs = typeof window._getCrashLogs === 'function' ? window._getCrashLogs() : [];
+    if (logs.length === 0) {
+        alert('没有崩溃日志记录。');
+        return;
+    }
+    const logText = logs.map(l => l.t.substring(5, 19) + ' ' + l.m).join('\n');
+    alert('崩溃日志 (' + logs.length + ' 条):\n\n' + logText.substring(0, 2000));
+    console.log('[崩溃日志]', logs);
+};
+
+// [修复] 防止 Safari "重复出现问题"死循环
+// 用 localStorage 记录加载尝试次数，如果连续崩溃超过 2 次则进入安全模式（跳过家具恢复）
+let _safeMode = false;
+(function guardCrashLoop() {
+    const crashKey = 'cat_game_load_attempts';
+    const attempts = parseInt(localStorage.getItem(crashKey) || '0');
+
+    // [诊断] 记录本次加载开始
+    if (typeof window._logCrash === 'function') {
+        window._logCrash(`[启动] 第 ${attempts + 1} 次加载尝试，GAME_VERSION=${window.GAME_VERSION}`);
+    }
+
+    if (attempts >= 2) {
+        _safeMode = true;
+        localStorage.setItem(crashKey, '0');
+        console.warn('[安全模式] 检测到连续加载失败，将跳过家具恢复以防止崩溃');
+        if (typeof window._logCrash === 'function') {
+            window._logCrash('[安全模式] 已激活，跳过家具恢复');
+        }
+    } else {
+        localStorage.setItem(crashKey, String(attempts + 1));
+    }
+    sessionStorage.removeItem('importing_save');
+})();
+
 // 更新 Loading Screen 的版本号
 const verEl = document.getElementById('version-text');
 if (verEl) verEl.innerText = window.GAME_VERSION;
@@ -148,6 +185,117 @@ let inputManager = null;
 
 // === [新增] 移动端检测 ===
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+// === [优化] 手机端贴图降采样（模拟 mip 偏移 1 级） ===
+// 将贴图缩小到 1/2 分辨率再上传 GPU，显存节省约 75%
+const _downsampleCanvas = document.createElement('canvas');
+const _downsampleCtx = _downsampleCanvas.getContext('2d');
+function downsampleTexture(texture, levels = 1) {
+    if (!isMobile || !texture || !texture.image) return;
+    const img = texture.image;
+    // 兼容 Image / Canvas / ImageBitmap
+    const srcW = img.width || img.naturalWidth;
+    const srcH = img.height || img.naturalHeight;
+    if (!srcW || !srcH) return;
+    // 只对大于 256 的贴图降采样
+    if (srcW <= 256 && srcH <= 256) return;
+    const divisor = 1 << levels; // levels=1 → 除以2
+    const newW = Math.max(4, srcW / divisor);
+    const newH = Math.max(4, srcH / divisor);
+    _downsampleCanvas.width = newW;
+    _downsampleCanvas.height = newH;
+    _downsampleCtx.drawImage(img, 0, 0, newW, newH);
+    // 创建独立 canvas 快照作为纹理源（避免复用的 _downsampleCanvas 被后续覆写）
+    const snapshot = document.createElement('canvas');
+    snapshot.width = newW;
+    snapshot.height = newH;
+    snapshot.getContext('2d').drawImage(_downsampleCanvas, 0, 0);
+    texture.image = snapshot;
+    texture.needsUpdate = true;
+    console.log(`[Mip偏移] ${srcW}x${srcH} → ${newW}x${newH}`);
+}
+
+// === [修复] 灯光阴影数量限制 ===
+// 手机 GPU 通常只支持 4~8 个同时投射阴影的光源，超出后 shader 编译失败导致崩溃
+const MAX_SHADOW_LIGHTS = isMobile ? 3 : 8; // 手机最多3个家具灯投影，电脑8个
+let _furnitureShadowCount = 0; // 当前家具灯光中启用阴影的数量
+
+// === [修复] 家具投影物体数量限制 ===
+// 手机 GPU 渲染 shadow pass 时需要遍历所有 castShadow=true 的物体
+// 当物体总量过多时，shadow pass 渲染开销超过 GPU 承受能力会导致崩溃
+const MAX_SHADOW_CASTERS = isMobile ? 8 : 999; // 手机最多8个家具投射阴影
+let _shadowCasterCount = 0; // 当前投射阴影的家具数量
+
+/**
+ * 为家具模型设置阴影投射，超出手机限制后自动禁用 castShadow
+ * @param {THREE.Group} modelGroup - 家具模型组
+ * @param {string} itemId - 家具ID（用于日志）
+ * @returns {boolean} 是否允许投射阴影
+ */
+function applyFurnitureShadow(modelGroup, itemId) {
+    const canCast = _shadowCasterCount < MAX_SHADOW_CASTERS;
+    if (!canCast) {
+        // 超限：禁用该家具所有mesh的阴影投射
+        modelGroup.traverse(c => {
+            if (c.isMesh) {
+                c.castShadow = false;
+                // receiveShadow 保持 true，这样地面阴影还能投到它上面
+            }
+        });
+        console.warn(`[阴影限制] ${itemId} 已禁用投射阴影 (当前投影家具: ${_shadowCasterCount}/${MAX_SHADOW_CASTERS})`);
+    } else {
+        _shadowCasterCount++;
+    }
+    // 暴露统计信息供诊断面板使用
+    window._shadowCasterCount = _shadowCasterCount;
+    window._maxShadowCasters = MAX_SHADOW_CASTERS;
+    return canCast;
+}
+
+/**
+ * 为家具创建灯光，自动限制阴影数量
+ * @param {Object} itemConfig - 家具配置
+ * @param {THREE.Group} modelGroup - 家具模型组
+ */
+function addFurnitureLight(itemConfig, modelGroup) {
+    if (!itemConfig.light) return;
+
+    const canCastShadow = _furnitureShadowCount < MAX_SHADOW_LIGHTS;
+
+    if (itemConfig.lightType === 'point') {
+        const bulb = new THREE.PointLight(0xffaa00, 0.8, 5);
+        let lx = 0, ly = 0.3, lz = 0;
+        if (itemConfig.lightOffset) {
+            lx = itemConfig.lightOffset.x || 0;
+            ly = itemConfig.lightOffset.y || 0;
+            lz = itemConfig.lightOffset.z || 0;
+        }
+        bulb.position.set(lx, ly, lz);
+        bulb.castShadow = canCastShadow;
+        modelGroup.add(bulb);
+    } else {
+        const sl = new THREE.SpotLight(0xfff0dd, 5);
+        sl.position.set(0, 0, 0);
+        sl.target.position.set(0, 0, 5);
+        sl.angle = Math.PI / 3;
+        sl.penumbra = 0.5;
+        sl.castShadow = canCastShadow;
+        modelGroup.add(sl);
+        modelGroup.add(sl.target);
+    }
+
+    if (canCastShadow) _furnitureShadowCount++;
+
+    if (itemConfig.type === 'wall') addSkyBacking(modelGroup, itemConfig.size);
+
+    // 暴露统计信息供诊断面板使用
+    window._furnitureShadowCount = _furnitureShadowCount;
+    window._maxShadowLights = MAX_SHADOW_LIGHTS;
+
+    if (!canCastShadow) {
+        console.warn(`[灯光限制] ${itemConfig.id} 的灯光已禁用阴影 (当前阴影灯光: ${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS})`);
+    }
+}
 console.log(`[Device Check] isMobile: ${isMobile}, maxTouchPoints: ${navigator.maxTouchPoints}`);
 
 // === [新增] Safari/iOS 触摸行为防护 ===
@@ -180,6 +328,8 @@ if (isMobile) {
 
 const obstacles = []; const placedFurniture = []; const cats = [];
 let heartScore = 500; let currentCategory = 'furniture'; let activeDecorId = { floor: null, wall: null }; let skyPanels = [];
+// [修复] 记录因模型缺失而未能恢复的家具原始数据，防止自动保存时丢失
+let unrestoredFurniture = [];
 let pendingInteraction = null;
 let draggingCat = null;
 
@@ -273,7 +423,11 @@ function sanitizeMaterial(child) {
         child.castShadow = true;
         child.receiveShadow = true;
 
-        if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
+        if (child.material.map) {
+            child.material.map.colorSpace = THREE.SRGBColorSpace;
+            // [优化] 手机端贴图降采样：跳过最大 mip 级别，显存省 75%
+            downsampleTexture(child.material.map);
+        }
 
         // 特殊处理玻璃/窗户
         const isGlass = child.name.toLowerCase().includes('glass');
@@ -317,7 +471,29 @@ function loadAssets(callback) {
     const files = [];
     files.push({ key: 'cat', path: './assets/models/cat.glb' });
     files.push({ key: 'box', path: './assets/models/cardboardBoxOpen.glb' });
+
+    // [优化] 手机端只预加载存档中已放置的家具模型，其他按需加载
+    // 这样从 70+ 个 GLB 降到仅需的 5~15 个，节省 100-200MB 内存
+    let neededIds = null;
+    if (isMobile) {
+        try {
+            const json = localStorage.getItem('cat_game_save_v1');
+            if (json) {
+                const saveData = JSON.parse(json);
+                if (saveData.furniture && Array.isArray(saveData.furniture)) {
+                    neededIds = new Set(saveData.furniture.map(f => f.id));
+                    console.log(`[优化] 手机端按需加载，存档中有 ${neededIds.size} 种家具`);
+                }
+            }
+        } catch (e) {
+            console.warn('[优化] 读取存档失败，回退到全量加载', e);
+            neededIds = null; // 回退到全量加载
+        }
+    }
+
     FURNITURE_DB.forEach(i => {
+        // 手机端：只加载存档中需要的模型
+        if (neededIds && !neededIds.has(i.id)) return;
         if (i.modelFile) files.push({ key: i.id, path: './assets/models/' + i.modelFile });
         if (i.fullModelFile) files.push({ key: i.fullModelFile, path: './assets/models/' + i.fullModelFile });
     });
@@ -350,6 +526,48 @@ function loadAssets(callback) {
             setTimeout(() => { if (loadingScreen) loadingScreen.remove(); callback(); }, 500);
         }
     }
+}
+
+/**
+ * [优化] 按需加载单个家具模型（手机端用）
+ * 当用户选择放置一个未预加载的家具时，即时加载它的 GLB 文件
+ * @param {Object} itemConfig - FURNITURE_DB 中的配置项
+ * @returns {Promise} 加载完成后 resolve
+ */
+function loadModelOnDemand(itemConfig) {
+    return new Promise((resolve, reject) => {
+        if (!itemConfig.modelFile) { resolve(); return; }
+        // 已加载则跳过
+        if (loadedModels[itemConfig.id]) { resolve(); return; }
+
+        const path = './assets/models/' + itemConfig.modelFile;
+        console.log(`[按需加载] 开始加载: ${itemConfig.id} (${path})`);
+        updateStatusText(`加载模型中: ${itemConfig.name || itemConfig.id}...`);
+
+        gltfLoader.load(path, (data) => {
+            data.scene.traverse(sanitizeMaterial);
+            loadedModels[itemConfig.id] = { scene: data.scene, animations: data.animations };
+            // 如果有 fullModelFile 也加载
+            if (itemConfig.fullModelFile && !loadedModels[itemConfig.fullModelFile]) {
+                const fullPath = './assets/models/' + itemConfig.fullModelFile;
+                gltfLoader.load(fullPath, (fullData) => {
+                    fullData.scene.traverse(sanitizeMaterial);
+                    loadedModels[itemConfig.fullModelFile] = { scene: fullData.scene, animations: fullData.animations };
+                    console.log(`[按需加载] 完成: ${itemConfig.id} + ${itemConfig.fullModelFile}`);
+                    resolve();
+                }, undefined, (err) => {
+                    console.warn(`[按需加载] fullModel 失败: ${fullPath}`, err);
+                    resolve(); // 非致命错误，继续
+                });
+            } else {
+                console.log(`[按需加载] 完成: ${itemConfig.id}`);
+                resolve();
+            }
+        }, undefined, (err) => {
+            console.error(`[按需加载] 失败: ${path}`, err);
+            reject(err);
+        });
+    });
 }
 
 // [修复] 补回 Decor 函数
@@ -484,6 +702,9 @@ function applyDecorVisuals(item) {
                         tex.repeat.set(2, 1);
                     }
                 }
+
+                // [优化] 手机端降采样墙纸/地板贴图
+                downsampleTexture(tex);
 
                 mesh.material.map = tex;
                 mesh.material.color.setHex(0xffffff);
@@ -939,7 +1160,7 @@ const furnitureCallbacks = {
 
 const gameSaveManager = new GameSaveManager(
     // 获取游戏数据的回调
-    () => ({ cats, heartScore, activeDecorId, placedFurniture }),
+    () => ({ cats, heartScore, activeDecorId, placedFurniture, unrestoredFurniture }),
     // 恢复数据的回调
     {
         setHeartScore: (val) => { heartScore = val; setDomText('heart-text-display', heartScore); },
@@ -948,6 +1169,8 @@ const gameSaveManager = new GameSaveManager(
         FURNITURE_DB: FURNITURE_DB
     }
 );
+// [修复] 暴露到全局，供 index.html onclick 调用
+window.gameSaveManager = gameSaveManager;
 
 // === Cat 类已迁移到 ./entities/Cat.js ===
 
@@ -1385,6 +1608,21 @@ window.startNewPlacement = function (id) {
     if (heartScore < item.price && !activeDecorId[item.decorType]) { alert("金钱不足"); return; }
     if (item.type === 'decor') { handleDecorClick(item); return; }
 
+    // [优化] 手机端按需加载：如果模型未加载，先加载再放置
+    if (item.modelFile && !loadedModels[item.id]) {
+        updateStatusText(`加载中: ${item.name}...`);
+        loadModelOnDemand(item).then(() => {
+            _doStartPlacement(item);
+        }).catch(() => {
+            updateStatusText(`加载失败: ${item.name}`);
+        });
+        return;
+    }
+
+    _doStartPlacement(item);
+};
+
+function _doStartPlacement(item) {
     deselect();
     mode = 'placing_new';
     currentItemData = item;
@@ -1452,7 +1690,7 @@ function createGhost() {
     if (ghostMesh) scene.remove(ghostMesh);
     const item = currentItemData; const modelGroup = prepareModel(item);
     if (modelGroup) { ghostMesh = modelGroup; } else { let mat = new THREE.MeshStandardMaterial({ color: item.color, transparent: true, opacity: 0.6 }); let geo = new THREE.BoxGeometry(item.size?.x || 1, item.size?.y || 1, item.size?.z || 1); ghostMesh = new THREE.Mesh(geo, mat); }
-    ghostMesh.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.transparent = true; c.material.opacity = 0.5; } });
+    ghostMesh.traverse((c) => { if (c.isMesh) { c.material = c.material.clone(); c.material.transparent = true; c.material.opacity = 0.5; c.castShadow = false; } });
     ghostMesh.position.set(0, -100, 0); if (item.type !== 'wall') ghostMesh.rotation.y = currentRotation; scene.add(ghostMesh);
 }
 
@@ -1556,15 +1794,20 @@ function confirmPlace() {
 }
 
 function finalizePlacement() {
-    // 隐藏放置提示并移除监听
     // 隐藏放置提示
     Tooltip.hide();
 
-    let m = ghostMesh.clone();
+    // [优化] 直接复用 ghostMesh 而不是 clone，避免放置瞬间场景中同时存在两份模型
+    // 先从场景移除 ghost，恢复材质后重新添加为正式物体
+    scene.remove(ghostMesh);
+    let m = ghostMesh;
+    ghostMesh = null; // 防止 cancelPlace 再次移除
+
     m.traverse(c => {
         if (c.isMesh) {
             c.material.opacity = 1.0;
             c.material.transparent = false;
+            c.castShadow = true; // ghost 创建时禁用了 castShadow，这里恢复
             if (!currentItemData.modelFile) c.material.color.setHex(currentItemData.color || 0xffffff);
         }
     });
@@ -1598,25 +1841,14 @@ function finalizePlacement() {
     }
 
 
-    if (currentItemData.light) {
-        if (currentItemData.lightType === 'point') {
-            const bulb = new THREE.PointLight(0xffaa00, 0.8, 5);
-            let lx = 0, ly = 0.3, lz = 0;
-            if (currentItemData.lightOffset) { lx = currentItemData.lightOffset.x || 0; ly = currentItemData.lightOffset.y || 0; lz = currentItemData.lightOffset.z || 0; }
-            bulb.position.set(lx, ly, lz); bulb.castShadow = true; m.add(bulb);
-        } else {
-            const sl = new THREE.SpotLight(0xfff0dd, 5); sl.position.set(0, 0, 0); sl.target.position.set(0, 0, 5); sl.angle = Math.PI / 3; sl.penumbra = 0.5; sl.castShadow = true; m.add(sl); m.add(sl.target);
-        }
-    }
-
-    // [修复] 天空背景
-    if (currentItemData.light && currentItemData.type === 'wall') {
-        addSkyBacking(m, currentItemData.size);
-    }
+    // [修复] 使用统一的灯光创建函数，自动限制阴影数量
+    addFurnitureLight(currentItemData, m);
+    // [修复] 限制投射阴影的家具数量，防止手机端 shadow pass 过载崩溃
+    applyFurnitureShadow(m, currentItemData.id);
 
     if (mode === 'placing_new' && currentItemData.layer === 1) {
         // [修复] 使用模型实际包围盒（红色框）而非配置尺寸（绿色框）
-        const actualBox = new THREE.Box3().setFromObject(ghostMesh);
+        const actualBox = new THREE.Box3().setFromObject(m);
         const actualSize = new THREE.Vector3();
         actualBox.getSize(actualSize);
         const savedItem = { ...currentItemData, actualModelSize: { x: actualSize.x, y: actualSize.y, z: actualSize.z } };
@@ -2304,6 +2536,13 @@ let lastFrameTime = 0;
 function animate(currentTime) {
     requestAnimationFrame(animate);
 
+    // [修复] 首帧标记加载成功，清除崩溃计数器
+    if (!animate._loadMarked) {
+        animate._loadMarked = true;
+        localStorage.setItem('cat_game_load_attempts', '0');
+        console.log('[启动] 游戏加载成功，崩溃计数器已重置');
+    }
+
     // [新增] 限制 FPS (解决高刷屏黑块问题)
     if (!currentTime) currentTime = performance.now();
     if (!lastFrameTime) lastFrameTime = currentTime;
@@ -2338,8 +2577,13 @@ function animate(currentTime) {
             renderer.render(scene, camera); // 降级兼容
         }
     } catch (e) {
-        console.error("Render Loop Error:", e);
-        // 这里可以加上降级逻辑，比如停止某些特效
+        // [诊断] 渲染循环错误也写入崩溃日志
+        if (!animate._errorLogged) {
+            animate._errorLogged = true; // 只记录第一次，避免日志爆炸
+            const msg = `[animate] Error: ${e.message}\nStack: ${(e.stack || '').substring(0, 400)}`;
+            console.error("Render Loop Error:", e);
+            if (typeof window._logCrash === 'function') window._logCrash(msg);
+        }
     }
 }
 
@@ -2408,6 +2652,7 @@ document.addEventListener('visibilitychange', () => {
 
 function startGame() {
     try {
+        if (typeof window._logCrash === 'function') window._logCrash('[startGame] 开始执行');
         logToScreen("Initializing Renderer & Scene...");
         setDomText('heart-text-display', heartScore);
         window.switchCategory('furniture');
@@ -2419,10 +2664,11 @@ function startGame() {
             depth: true
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 限制像素比，防止高分屏卡顿
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2)); // [优化] 手机端降低像素比，减少渲染量
 
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.enabled = !isMobile; // [优化] 手机端彻底关闭阴影，省掉整个 shadow pass
+        // [优化] 手机端使用 PCFShadowMap（单次采样），比 PCFSoftShadowMap（多次采样）开销低很多
+        renderer.shadowMap.type = isMobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
         // 3. 色彩空间与色调映射 (关键！)
         renderer.outputColorSpace = THREE.SRGBColorSpace; // 确保纹理和光照颜色准确
@@ -2435,7 +2681,7 @@ function startGame() {
         renderer.domElement.addEventListener("webglcontextlost", function (event) {
             event.preventDefault();
             console.error("WebGL Context Lost! 显存不足或驱动崩溃，尝试恢复...");
-            // 可以暂停游戏循环或显示错误提示
+            if (typeof window._logCrash === 'function') window._logCrash('[WebGL] Context Lost - 可能是OOM');
         }, false);
 
         renderer.domElement.addEventListener("webglcontextrestored", function (event) {
@@ -2620,8 +2866,10 @@ function startGame() {
         sunLight.castShadow = true;
 
         // 2. 提高分辨率：因为范围大了，分辨率也要跟上，否则锯齿严重
-        sunLight.shadow.mapSize.width = 4096;
-        sunLight.shadow.mapSize.height = 4096;
+        // [修复] 手机端降低 shadow map 分辨率，4096→1024 = 显存减少16倍
+        const shadowRes = isMobile ? 512 : 4096;
+        sunLight.shadow.mapSize.width = shadowRes;
+        sunLight.shadow.mapSize.height = shadowRes;
 
         // 3. 回归高质量 Bias：让阴影紧贴物体
         // 之前改成了 -0.001 导致悬空，现在改回细腻的参数
@@ -2721,6 +2969,9 @@ function startGame() {
         const savedData = gameSaveManager.loadGame();
 
         if (savedData) {
+            if (typeof window._logCrash === 'function') {
+                window._logCrash(`[存档] 读取成功，家具数量: ${savedData.furniture ? savedData.furniture.length : 0}, 安全模式: ${_safeMode}`);
+            }
             updateStatusText("检测到存档，正在恢复...");
 
             // 1. 恢复猫咪属性 (现在 newCat 存在了，就不会报错了)
@@ -2731,62 +2982,255 @@ function startGame() {
             }
 
             // 2. 恢复家具
+            unrestoredFurniture = [];
+            const _isDebugRestore = localStorage.getItem('cat_game_debug_restore') === 'true';
+            if (_isDebugRestore) {
+                // 进入后清除标记，下次正常加载
+                localStorage.removeItem('cat_game_debug_restore');
+            }
+
             if (savedData.furniture && savedData.furniture.length > 0) {
-                savedData.furniture.forEach(fData => {
-                    // 查找数据库配置
-                    // 注意：如果是 mystery_box，它不在 DB 里，需要特殊处理，或者我们在 DB 里加上 mystery_box 的定义
-                    // 你的代码之前写了 const boxDbItem = { id: 'mystery_box'... }，这里我们简单处理，暂不恢复箱子，或者只恢复普通家具
-                    // 为了简化，我们暂时只恢复 DB 里有的家具。箱子因为是随机生成的，丢了就丢了（或者你需要把 mystery_box 加入 FURNITURE_DB）
+                if (_safeMode) {
+                    // 安全模式：跳过家具恢复，但保留数据不丢失
+                    console.warn('[安全模式] 跳过家具恢复，所有家具数据保留在 unrestoredFurniture 中');
+                    unrestoredFurniture = savedData.furniture.slice();
+                    updateStatusText('安全模式：家具暂未加载。请重新刷新页面恢复。');
+                    // [诊断] 在安全模式下自动显示崩溃日志浮层
+                    setTimeout(() => {
+                        if (typeof window._showCrashOverlay === 'function') {
+                            window._showCrashOverlay();
+                        }
+                    }, 500);
+                } else if (_isDebugRestore) {
+                    // ========== DEBUG 逐步恢复模式 ==========
+                    console.warn('[DEBUG] 进入逐步恢复模式，共 ' + savedData.furniture.length + ' 个家具');
 
-                    let itemConfig = FURNITURE_DB.find(i => i.id === fData.id);
+                    const debugQueue = savedData.furniture.slice();
+                    let debugIndex = 0;
 
-                    // 特殊处理：如果是神秘箱子
-                    if (fData.id === 'mystery_box') {
-                        // 重新生成箱子比较麻烦，这里暂时跳过箱子的恢复，避免复杂
-                        // 如果非常需要恢复箱子，需要把 spawnMysteryBox 逻辑拆分
-                        return;
+                    // 创建 debug 浮层 UI
+                    const debugOverlay = document.createElement('div');
+                    debugOverlay.id = 'debug-restore-overlay';
+                    debugOverlay.style.cssText = 'position:fixed; bottom:0; left:0; width:100%; background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace; font-size:13px; z-index:99999; padding:10px; box-sizing:border-box; max-height:40vh; overflow-y:auto;';
+
+                    const debugLog = document.createElement('div');
+                    debugLog.style.cssText = 'margin-bottom:10px; max-height:25vh; overflow-y:auto;';
+                    debugLog.innerHTML = '<div style="color:#ff0;">🔧 DEBUG 逐步恢复模式</div><div>共 ' + debugQueue.length + ' 个家具等待恢复</div>';
+
+                    const debugBtnRow = document.createElement('div');
+                    debugBtnRow.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap;';
+
+                    const btnNext = document.createElement('button');
+                    btnNext.style.cssText = 'background:#4CAF50; color:#fff; border:none; padding:10px 20px; border-radius:5px; font-size:14px; font-weight:bold;';
+
+                    const btnSkip = document.createElement('button');
+                    btnSkip.textContent = '跳过此项';
+                    btnSkip.style.cssText = 'background:#ff9800; color:#fff; border:none; padding:10px 16px; border-radius:5px; font-size:13px;';
+
+                    const btnLoadAll = document.createElement('button');
+                    btnLoadAll.textContent = '加载剩余全部';
+                    btnLoadAll.style.cssText = 'background:#2196F3; color:#fff; border:none; padding:10px 16px; border-radius:5px; font-size:13px;';
+
+                    const btnDone = document.createElement('button');
+                    btnDone.textContent = '结束(保留剩余数据)';
+                    btnDone.style.cssText = 'background:#f44; color:#fff; border:none; padding:10px 16px; border-radius:5px; font-size:13px;';
+
+                    debugBtnRow.append(btnNext, btnSkip, btnLoadAll, btnDone);
+                    debugOverlay.append(debugLog, debugBtnRow);
+                    document.body.appendChild(debugOverlay);
+
+                    function addDebugLine(text, color) {
+                        const line = document.createElement('div');
+                        line.style.color = color || '#0f0';
+                        line.textContent = text;
+                        debugLog.appendChild(line);
+                        debugLog.scrollTop = debugLog.scrollHeight;
                     }
 
-                    if (itemConfig) {
-                        const modelGroup = prepareModel(itemConfig);
-                        if (modelGroup) {
+                    function updateNextBtn() {
+                        if (debugIndex < debugQueue.length) {
+                            const next = debugQueue[debugIndex];
+                            const cfg = FURNITURE_DB.find(i => i.id === next.id);
+                            const name = cfg ? (cfg.name || cfg.id) : next.id;
+                            btnNext.textContent = `▶ 加载 #${debugIndex + 1}/${debugQueue.length}: ${name} (${next.id})`;
+                        } else {
+                            btnNext.textContent = '✅ 全部加载完毕';
+                            btnNext.disabled = true;
+                            btnSkip.disabled = true;
+                            addDebugLine(`恢复完成！成功=${placedFurniture.length}, 未恢复=${unrestoredFurniture.length}`, '#0ff');
+                        }
+                    }
+
+                    function debugRestoreOne() {
+                        if (debugIndex >= debugQueue.length) return;
+                        const fData = debugQueue[debugIndex];
+                        const idx = debugIndex;
+                        debugIndex++;
+                        addDebugLine(`[${idx + 1}/${debugQueue.length}] 正在恢复: ${fData.id}...`);
+
+                        try {
+                            if (fData.id === 'mystery_box') {
+                                addDebugLine(`  → 跳过 mystery_box`, '#888');
+                                updateNextBtn();
+                                return;
+                            }
+                            let itemConfig = FURNITURE_DB.find(i => i.id === fData.id);
+                            if (!itemConfig) {
+                                addDebugLine(`  → ❌ FURNITURE_DB 中找不到 "${fData.id}"`, '#f44');
+                                unrestoredFurniture.push(fData);
+                                updateNextBtn();
+                                return;
+                            }
+                            const modelGroup = prepareModel(itemConfig);
+                            if (!modelGroup) {
+                                addDebugLine(`  → ❌ prepareModel 返回 null (模型未预加载?)`, '#f44');
+                                unrestoredFurniture.push(fData);
+                                updateNextBtn();
+                                return;
+                            }
                             modelGroup.position.set(fData.pos.x, fData.pos.y, fData.pos.z);
-                            modelGroup.rotation.y = fData.rot.y;
-
-                            // 实例化类
+                            modelGroup.rotation.set(fData.rot.x || 0, fData.rot.y || 0, fData.rot.z || 0);
                             const furnClass = new Furniture(modelGroup, itemConfig, furnitureCallbacks);
-
-                            // 恢复功能状态 (满/空)
                             if (fData.funcState && furnClass.functionalState) {
                                 furnClass.functionalState = fData.funcState;
                                 furnClass.updateVisuals();
                             }
-
-                            // 添加光照逻辑 (保持不变)
                             if (itemConfig.light) {
-                                if (itemConfig.lightType === 'point') {
-                                    const bulb = new THREE.PointLight(0xffaa00, 0.8, 5);
-                                    let lx = 0, ly = 0.3, lz = 0;
-                                    if (itemConfig.lightOffset) { lx = itemConfig.lightOffset.x || 0; ly = itemConfig.lightOffset.y || 0; lz = itemConfig.lightOffset.z || 0; }
-                                    bulb.position.set(lx, ly, lz); bulb.castShadow = true; modelGroup.add(bulb);
-                                } else {
-                                    const sl = new THREE.SpotLight(0xfff0dd, 5); sl.position.set(0, 0, 0); sl.target.position.set(0, 0, 5); sl.angle = Math.PI / 3; sl.penumbra = 0.5; sl.castShadow = true; modelGroup.add(sl); modelGroup.add(sl.target);
-                                }
-                                if (itemConfig.type === 'wall') addSkyBacking(modelGroup, itemConfig.size);
+                                addFurnitureLight(itemConfig, modelGroup);
                             }
-
-                            // === [新增] 强制高度修正 (防止旧存档里的地毯陷地里) ===
-                            // 如果是地毯(Layer 0)，且高度接近0（说明是旧数据），强制设为 0.02
+                            // [修复] 限制投射阴影的家具数量
+                            applyFurnitureShadow(modelGroup, itemConfig.id);
                             if (itemConfig.layer === 0 && Math.abs(modelGroup.position.y) < 0.01) {
                                 modelGroup.position.y = 0.02;
                             }
-                            // =======================================================
-
-                            scene.add(modelGroup); // <--- 这里是你截图里的 4115 行
+                            scene.add(modelGroup);
                             placedFurniture.push(modelGroup);
+                            addDebugLine(`  → ✅ 成功 (已恢复 ${placedFurniture.length} 个, 阴影=${_shadowCasterCount}/${MAX_SHADOW_CASTERS})`, '#0f0');
+                        } catch (err) {
+                            addDebugLine(`  → 💥 错误: ${err.message}`, '#f44');
+                            if (typeof window._logCrash === 'function') {
+                                window._logCrash(`[DEBUG恢复失败] #${idx} id=${fData.id}: ${err.message}`);
+                            }
+                            unrestoredFurniture.push(fData);
+                        }
+                        updateNextBtn();
+                    }
+
+                    btnNext.onclick = debugRestoreOne;
+
+                    btnSkip.onclick = () => {
+                        if (debugIndex >= debugQueue.length) return;
+                        const fData = debugQueue[debugIndex];
+                        addDebugLine(`[${debugIndex + 1}] 手动跳过: ${fData.id}`, '#ff9800');
+                        unrestoredFurniture.push(fData);
+                        debugIndex++;
+                        updateNextBtn();
+                    };
+
+                    btnLoadAll.onclick = () => {
+                        addDebugLine('--- 批量加载剩余全部 ---', '#2196F3');
+                        while (debugIndex < debugQueue.length) {
+                            debugRestoreOne();
+                        }
+                    };
+
+                    btnDone.onclick = () => {
+                        // 把剩余未恢复的全部保留
+                        while (debugIndex < debugQueue.length) {
+                            unrestoredFurniture.push(debugQueue[debugIndex]);
+                            debugIndex++;
+                        }
+                        addDebugLine(`结束。剩余 ${unrestoredFurniture.length} 个家具数据已保留。`, '#ff0');
+                        updateNextBtn();
+                        btnDone.disabled = true;
+                    };
+
+                    updateNextBtn();
+                    // ========== END DEBUG 模式 ==========
+                } else {
+                const furnitureQueue = savedData.furniture.slice();
+                const BATCH_SIZE = 3; // 每批恢复 3 个家具
+
+                let _restoreIndex = 0; // 当前恢复进度
+
+                function restoreOneFurniture(fData, idx) {
+                    // [诊断] 在恢复前就写日志，如果崩溃了最后一条日志就是凶手
+                    if (typeof window._logCrash === 'function') {
+                        window._logCrash(`[恢复] #${idx}/${savedData.furniture.length} id=${fData.id} pos=(${fData.pos?.x?.toFixed(1)},${fData.pos?.y?.toFixed(1)},${fData.pos?.z?.toFixed(1)})`);
+                    }
+                    try {
+                        if (fData.id === 'mystery_box') return;
+                        let itemConfig = FURNITURE_DB.find(i => i.id === fData.id);
+                        if (itemConfig) {
+                            const modelGroup = prepareModel(itemConfig);
+                            if (modelGroup) {
+                                modelGroup.position.set(fData.pos.x, fData.pos.y, fData.pos.z);
+                                modelGroup.rotation.set(
+                                    fData.rot.x || 0,
+                                    fData.rot.y || 0,
+                                    fData.rot.z || 0
+                                );
+                                const furnClass = new Furniture(modelGroup, itemConfig, furnitureCallbacks);
+                                if (fData.funcState && furnClass.functionalState) {
+                                    furnClass.functionalState = fData.funcState;
+                                    furnClass.updateVisuals();
+                                }
+                                if (itemConfig.light) {
+                                    addFurnitureLight(itemConfig, modelGroup);
+                                }
+                                // [修复] 限制投射阴影的家具数量
+                                applyFurnitureShadow(modelGroup, itemConfig.id);
+                                if (itemConfig.layer === 0 && Math.abs(modelGroup.position.y) < 0.01) {
+                                    modelGroup.position.y = 0.02;
+                                }
+                                scene.add(modelGroup);
+                                placedFurniture.push(modelGroup);
+                            } else {
+                                console.warn(`[存档恢复] 模型未加载，保留原始数据: ${fData.id}`);
+                                unrestoredFurniture.push(fData);
+                            }
+                        } else {
+                            console.warn(`[存档恢复] 未知家具ID，保留原始数据: ${fData.id}`);
+                            unrestoredFurniture.push(fData);
+                        }
+                    } catch (err) {
+                        console.warn(`[存档恢复] 跳过家具 ${fData.id}:`, err.message);
+                        if (typeof window._logCrash === 'function') {
+                            window._logCrash(`[恢复失败] #${idx} id=${fData.id}: ${err.message}`);
+                        }
+                        unrestoredFurniture.push(fData);
+                    }
+                }
+
+                function restoreBatch() {
+                    // [诊断] 每批开始前记录进度
+                    if (typeof window._logCrash === 'function') {
+                        window._logCrash(`[批次] 开始恢复 #${_restoreIndex}~${Math.min(_restoreIndex + BATCH_SIZE, savedData.furniture.length) - 1}, 已完成=${placedFurniture.length}`);
+                    }
+                    const batch = furnitureQueue.splice(0, BATCH_SIZE);
+                    batch.forEach(fData => {
+                        restoreOneFurniture(fData, _restoreIndex);
+                        _restoreIndex++;
+                    });
+                    if (furnitureQueue.length > 0) {
+                        updateStatusText(`正在恢复家具... (${placedFurniture.length}/${savedData.furniture.length})`);
+                        setTimeout(restoreBatch, 50);
+                    } else {
+                        if (unrestoredFurniture.length > 0) {
+                            console.warn(`[存档恢复] ${unrestoredFurniture.length} 个家具未能恢复，已保留原始数据防止丢失`);
+                        }
+                        updateStatusText(`存档恢复完成！共 ${placedFurniture.length} 个家具`);
+                        console.log(`[存档恢复] 完成: ${placedFurniture.length} 成功, ${unrestoredFurniture.length} 未恢复, 阴影灯光: ${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS}, 阴影投射: ${_shadowCasterCount}/${MAX_SHADOW_CASTERS}`);
+                        window._placedFurnitureCount = placedFurniture.length;
+                        window._unrestoredCount = unrestoredFurniture.length;
+                        if (typeof window._logCrash === 'function') {
+                            window._logCrash(`[恢复完成] 成功=${placedFurniture.length}, 失败=${unrestoredFurniture.length}, 阴影灯光=${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS}, 阴影投射=${_shadowCasterCount}/${MAX_SHADOW_CASTERS}`);
                         }
                     }
-                });
+                }
+
+                restoreBatch();
+                } // end of normal restore (not safeMode, not debug)
             }
         } else {
             updateStatusText("新游戏，无存档");
@@ -2830,17 +3274,24 @@ function startGame() {
         }
 
         // === [新增] 在 startGame 底部调用后期处理初始化 ===
-        composer = initPostProcessing(renderer, scene, camera);
+        // [优化] 手机端跳过 EffectComposer，省掉全屏 RenderTarget 的显存开销
+        if (!isMobile) {
+            composer = initPostProcessing(renderer, scene, camera);
+        }
 
         // === [新增] 初始化照片系统 ===
         photoManager.init(renderer, scene, camera, cats);
         console.log("📷 照片系统已初始化");
 
         logToScreen("Game Loop Starting...");
+        if (typeof window._logCrash === 'function') window._logCrash('[startGame] 即将启动 animate 循环');
         animate();
     } catch (e) {
         console.error(e);
         logToScreen("STARTGAME CRASH: " + e.message, 'error');
+        if (typeof window._logCrash === 'function') {
+            window._logCrash('[startGame] CRASH: ' + e.message + '\nStack: ' + (e.stack || '').substring(0, 500));
+        }
     }
 }
 
@@ -3153,20 +3604,31 @@ window.toggleShop = function () {
 };
 // [新增] 存档导出：下载为 JSON 文件
 window.exportSaveToFile = function () {
+    // [修复] 先强制执行一次 localStorage 存盘，确保数据是最新的
+    gameSaveManager.saveGame();
+
     const saveData = gameSaveManager.exportSave();
     if (!saveData) {
         alert('没有找到存档数据！');
         return;
     }
 
-    // 生成下载文件
     const blob = new Blob([saveData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `CatGame_Save_${new Date().toISOString().slice(0, 10)}.json`;
+
+    // [修复] iOS Safari 需要将 <a> 添加到 DOM 才能触发下载
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+
+    // [修复] 延迟撤销 URL，给 Safari 足够时间完成下载
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 3000);
 
     updateStatusText('存档已导出！');
 };
@@ -3176,22 +3638,58 @@ window.importSaveFromFile = function () {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
-    input.onchange = (e) => {
+    // [修复] iOS Safari 需要将 input 添加到 DOM 才能正确触发 change 事件
+    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    document.body.appendChild(input);
+
+    input.addEventListener('change', (e) => {
         const file = e.target.files[0];
-        if (!file) return;
+        if (!file) {
+            document.body.removeChild(input);
+            return;
+        }
+
+        // 立刻显示加载提示
+        updateStatusText('正在读取存档文件...');
+        const ls = document.getElementById('loading-screen');
+        if (ls) { ls.style.display = 'flex'; const p = ls.querySelector('p'); if (p) p.textContent = '正在导入存档...'; }
 
         const reader = new FileReader();
         reader.onload = (event) => {
-            const jsonString = event.target.result;
-            if (gameSaveManager.importSave(jsonString)) {
-                updateStatusText('存档导入成功！刷新页面以加载...');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                alert('存档文件格式错误！');
+            try {
+                const jsonString = event.target.result;
+                if (gameSaveManager.importSave(jsonString)) {
+                    // [修复] 重置崩溃计数器，让下次加载从 0 开始计数
+                    localStorage.setItem('cat_game_load_attempts', '0');
+                    document.body.removeChild(input);
+                    // [修复] 不自动刷新，让用户手动操作，避免 Safari 循环崩溃检测
+                    // 先隐藏 loading screen
+                    if (ls) ls.style.display = 'none';
+                    updateStatusText('存档导入成功！');
+                    const doReload = confirm('存档导入成功！\n\n点击「确定」立即刷新加载新存档。\n点击「取消」稍后手动刷新。');
+                    if (doReload) {
+                        window.location.reload();
+                    }
+                } else {
+                    if (ls) ls.style.display = 'none';
+                    alert('存档文件格式错误！');
+                    document.body.removeChild(input);
+                }
+            } catch (err) {
+                console.error('Import error:', err);
+                if (ls) ls.style.display = 'none';
+                alert('存档导入失败: ' + err.message);
+                document.body.removeChild(input);
             }
         };
+        reader.onerror = () => {
+            if (ls) ls.style.display = 'none';
+            alert('文件读取失败！');
+            document.body.removeChild(input);
+        };
         reader.readAsText(file);
-    };
+    });
+
     input.click();
 };
 

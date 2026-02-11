@@ -250,6 +250,28 @@ export class WeatherSystem {
         this.lastWeatherCheckDate = null; // 记录上次检查天气的日期
         this.isManualWeather = false; // 标记是否为玩家手动切换的天气
 
+        // [优化] 预分配复用对象，避免每帧 new THREE.Color 导致 GC 压力
+        this._cloudColor = new THREE.Color();
+        // 天空颜色预分配（晴天 + 阴天各8个）
+        this._skyColors = {
+            cloudyDayTop: new THREE.Color(0x8899aa),
+            cloudyDayBot: new THREE.Color(0xc0c8d0),
+            cloudyDawnTop: new THREE.Color(0x6a7a8a),
+            cloudyDawnBot: new THREE.Color(0xb0b8c0),
+            cloudyDuskTop: new THREE.Color(0x4a5568),
+            cloudyDuskBot: new THREE.Color(0x8090a0),
+            cloudyNightTop: new THREE.Color(0x1a1a28),
+            cloudyNightBot: new THREE.Color(0x3a3a50),
+            dawnTop: new THREE.Color(0x607d8b),
+            dawnBot: new THREE.Color(0xffe0b2),
+            dayTop: new THREE.Color(0x4fc3f7),
+            dayBot: new THREE.Color(0xffffff),
+            duskTop: new THREE.Color(0x2c3e50),
+            duskBot: new THREE.Color(0xffcc80),
+            nightTop: new THREE.Color(0x0a0a12),
+            nightBot: new THREE.Color(0x1a237e),
+        };
+
         this.initSky();
         this.initClouds();
         this.initPrecipitation();
@@ -582,9 +604,11 @@ export class WeatherSystem {
                 cloudColor = 0x4a5568;
             }
 
+            // [优化] 复用预分配的 _cloudColor，避免每帧每朵云 new THREE.Color
+            this._cloudColor.set(cloudColor);
             c.children.forEach(m => {
                 if (m.material && m.material.color) {
-                    m.material.color.lerp(new THREE.Color(cloudColor), dt * 0.5);
+                    m.material.color.lerp(this._cloudColor, dt * 0.5);
                 }
             });
         });
@@ -622,31 +646,8 @@ export class WeatherSystem {
     }
 
     updateSkyColor(hour, isInstant = false) {
-        // [新增] 阴天颜色方案（雨天/雪天）
-        const cloudyDayTop = new THREE.Color(0x8899aa); // 灰蓝色天空
-        const cloudyDayBot = new THREE.Color(0xc0c8d0); // 浅灰色
-
-        const cloudyDawnTop = new THREE.Color(0x6a7a8a);
-        const cloudyDawnBot = new THREE.Color(0xb0b8c0);
-
-        const cloudyDuskTop = new THREE.Color(0x4a5568);
-        const cloudyDuskBot = new THREE.Color(0x8090a0);
-
-        const cloudyNightTop = new THREE.Color(0x1a1a28);
-        const cloudyNightBot = new THREE.Color(0x3a3a50);
-
-        // 晴天颜色方案
-        const dawnTop = new THREE.Color(0x607d8b);
-        const dawnBot = new THREE.Color(0xffe0b2);
-
-        const dayTop = new THREE.Color(0x4fc3f7);
-        const dayBot = new THREE.Color(0xffffff);
-
-        const duskTop = new THREE.Color(0x2c3e50);
-        const duskBot = new THREE.Color(0xffcc80);
-
-        const nightTop = new THREE.Color(0x0a0a12);
-        const nightBot = new THREE.Color(0x1a237e);
+        // [优化] 使用构造函数中预分配的颜色对象，不再每帧创建 16 个 new THREE.Color
+        const sc = this._skyColors;
 
         let t = this.skyMat.uniforms.topColor.value;
         let b = this.skyMat.uniforms.bottomColor.value;
@@ -658,35 +659,35 @@ export class WeatherSystem {
 
         if (hour >= 5 && hour < 9) {
             if (isCloudy) {
-                t.lerp(cloudyDawnTop, lerpFactor);
-                b.lerp(cloudyDawnBot, lerpFactor);
+                t.lerp(sc.cloudyDawnTop, lerpFactor);
+                b.lerp(sc.cloudyDawnBot, lerpFactor);
             } else {
-                t.lerp(dawnTop, lerpFactor);
-                b.lerp(dawnBot, lerpFactor);
+                t.lerp(sc.dawnTop, lerpFactor);
+                b.lerp(sc.dawnBot, lerpFactor);
             }
         } else if (hour >= 9 && hour < 17) {
             if (isCloudy) {
-                t.lerp(cloudyDayTop, lerpFactor);
-                b.lerp(cloudyDayBot, lerpFactor);
+                t.lerp(sc.cloudyDayTop, lerpFactor);
+                b.lerp(sc.cloudyDayBot, lerpFactor);
             } else {
-                t.lerp(dayTop, lerpFactor);
-                b.lerp(dayBot, lerpFactor);
+                t.lerp(sc.dayTop, lerpFactor);
+                b.lerp(sc.dayBot, lerpFactor);
             }
         } else if (hour >= 17 && hour < 20) {
             if (isCloudy) {
-                t.lerp(cloudyDuskTop, lerpFactor);
-                b.lerp(cloudyDuskBot, lerpFactor);
+                t.lerp(sc.cloudyDuskTop, lerpFactor);
+                b.lerp(sc.cloudyDuskBot, lerpFactor);
             } else {
-                t.lerp(duskTop, lerpFactor);
-                b.lerp(duskBot, lerpFactor);
+                t.lerp(sc.duskTop, lerpFactor);
+                b.lerp(sc.duskBot, lerpFactor);
             }
         } else {
             if (isCloudy) {
-                t.lerp(cloudyNightTop, lerpFactor);
-                b.lerp(cloudyNightBot, lerpFactor);
+                t.lerp(sc.cloudyNightTop, lerpFactor);
+                b.lerp(sc.cloudyNightBot, lerpFactor);
             } else {
-                t.lerp(nightTop, lerpFactor);
-                b.lerp(nightBot, lerpFactor);
+                t.lerp(sc.nightTop, lerpFactor);
+                b.lerp(sc.nightBot, lerpFactor);
             }
         }
 

@@ -51,16 +51,20 @@ export function initPostProcessing(renderer, scene, camera) {
         composer.addPass(bloomPass);
     }
 
-    // 4. 移轴效果 (TiltShift)
-    const tiltShiftPass = new ShaderPass(CustomTiltShiftShader);
-    tiltShiftPass.uniforms['blurradius'].value = 3.0;
-    tiltShiftPass.uniforms['focus'].value = 0.5;
-    tiltShiftPass.uniforms['aspect'].value = width / height;
-    composer.addPass(tiltShiftPass);
+    // 4. 移轴效果 (TiltShift) - 仅PC端启用（81次全屏纹理采样，手机GPU扛不住）
+    if (!isMobile) {
+        const tiltShiftPass = new ShaderPass(CustomTiltShiftShader);
+        tiltShiftPass.uniforms['blurradius'].value = 3.0;
+        tiltShiftPass.uniforms['focus'].value = 0.5;
+        tiltShiftPass.uniforms['aspect'].value = width / height;
+        composer.addPass(tiltShiftPass);
+    }
 
-    // 5. SMAA (抗锯齿)
-    const smaaPass = new SMAAPass(width, height);
-    composer.addPass(smaaPass);
+    // 5. SMAA (抗锯齿) - 仅PC端启用（手机高像素密度不需要额外抗锯齿）
+    if (!isMobile) {
+        const smaaPass = new SMAAPass(width, height);
+        composer.addPass(smaaPass);
+    }
 
     // 6. Output (色彩输出)
     const outputPass = new OutputPass();

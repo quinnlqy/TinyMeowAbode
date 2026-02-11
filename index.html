@@ -20,21 +20,124 @@
         function logToScreen(msg, type = 'info') {
             const consoleDiv = document.getElementById('debug-console');
             if (consoleDiv) {
-                //consoleDiv.style.display = 'block'; 
                 const line = document.createElement('div');
                 line.textContent = `> ${msg}`;
                 if (type === 'error') line.className = 'log-error';
                 else if (type === 'warn') line.className = 'log-warn'; consoleDiv.appendChild(line); consoleDiv.scrollTop = consoleDiv.scrollHeight;
             } console.log(msg);
         }
-        window.onerror = function (msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); return false; };
+
+        // === [诊断系统] 把崩溃日志写入 localStorage，下次加载时可查看 ===
+        (function setupCrashDiagnostics() {
+            var crashLogKey = 'cat_game_crash_log';
+            var maxLogs = 30;
+
+            // 写入崩溃日志
+            window._logCrash = function(msg) {
+                try {
+                    var logs = JSON.parse(localStorage.getItem(crashLogKey) || '[]');
+                    logs.push({ t: new Date().toISOString(), m: msg });
+                    if (logs.length > maxLogs) logs = logs.slice(-maxLogs);
+                    localStorage.setItem(crashLogKey, JSON.stringify(logs));
+                } catch(e) {}
+            };
+
+            // 全局 JS 错误
+            window.onerror = function(msg, url, line, col, err) {
+                var detail = 'ERROR: ' + msg + ' (Line ' + line + ':' + col + ')';
+                if (err && err.stack) detail += '\nStack: ' + err.stack.substring(0, 300);
+                logToScreen(detail, 'error');
+                window._logCrash(detail);
+                return false;
+            };
+
+            // 未捕获的 Promise 错误
+            window.addEventListener('unhandledrejection', function(event) {
+                var msg = 'PROMISE ERROR: ' + (event.reason ? (event.reason.message || event.reason) : 'unknown');
+                if (event.reason && event.reason.stack) msg += '\nStack: ' + event.reason.stack.substring(0, 300);
+                logToScreen(msg, 'error');
+                window._logCrash(msg);
+            });
+
+            // 读取上次崩溃日志（如果有的话）
+            window._getCrashLogs = function() {
+                try { return JSON.parse(localStorage.getItem(crashLogKey) || '[]'); } catch(e) { return []; }
+            };
+            window._clearCrashLogs = function() {
+                localStorage.removeItem(crashLogKey);
+            };
+
+            // 如果上次有崩溃记录，在控制台输出
+            var prevLogs = window._getCrashLogs();
+            if (prevLogs.length > 0) {
+                console.warn('[诊断] 上次运行的崩溃日志 (' + prevLogs.length + ' 条):');
+                prevLogs.forEach(function(l) { console.warn('  ' + l.t + ': ' + l.m); });
+            }
+        })();
     </script>
     <!-- vConsole 已移除，如需调试请手动加载 -->
 </head>
 
 <body>
 
-    <!-- debug-console 已隐藏 -->
+    <!-- [诊断] 崩溃日志浮层，点击版本号5次触发 -->
+    <div id="crash-log-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; overflow-y:auto; padding:15px; box-sizing:border-box;">
+        <div style="color:#0f0; font-family:monospace; font-size:12px; white-space:pre-wrap; word-break:break-all;" id="crash-log-content"></div>
+        <button onclick="document.getElementById('crash-log-overlay').style.display='none'" style="position:fixed; top:10px; right:10px; background:#f44; color:#fff; border:none; padding:8px 16px; border-radius:5px; font-size:14px; z-index:100000;">关闭</button>
+        <button onclick="window._clearCrashLogs && window._clearCrashLogs(); document.getElementById('crash-log-content').textContent='已清空'" style="position:fixed; top:10px; right:70px; background:#666; color:#fff; border:none; padding:8px 16px; border-radius:5px; font-size:14px; z-index:100000;">清空</button>
+        <button id="btn-reset-game" onclick="window._confirmResetGame()" style="position:fixed; bottom:15px; left:50%; transform:translateX(-50%); background:#ff2222; color:#fff; border:2px solid #fff; padding:10px 24px; border-radius:8px; font-size:15px; font-weight:bold; z-index:100000;">⚠️ 重置所有数据</button>
+    </div>
+    <script>
+        // 连续点击版本号5次显示崩溃日志
+        (function() {
+            var tapCount = 0, tapTimer = null;
+            window._showCrashOverlay = function() {
+                var overlay = document.getElementById('crash-log-overlay');
+                var content = document.getElementById('crash-log-content');
+                if (!overlay || !content) return;
+                var logs = window._getCrashLogs ? window._getCrashLogs() : [];
+                var statusInfo = '\n\n--- 当前状态 ---\n'
+                    + '- load_attempts: ' + (localStorage.getItem('cat_game_load_attempts') || '0')
+                    + '\n- safeMode: ' + (window._safeMode || false)
+                    + '\n- 阴影灯光: ' + (window._furnitureShadowCount || 0) + '/' + (window._maxShadowLights || '?')
+                    + '\n- 阴影投射: ' + (window._shadowCasterCount || 0) + '/' + (window._maxShadowCasters || '?')
+                    + '\n- 家具数量: ' + (window._placedFurnitureCount || '?')
+                    + '\n- 未恢复家具: ' + (window._unrestoredCount || '?');
+                if (logs.length === 0) {
+                    content.textContent = '没有崩溃日志。' + statusInfo;
+                } else {
+                    content.textContent = '崩溃日志 (' + logs.length + ' 条):\n\n' + logs.map(function(l) { return l.t + '\n  ' + l.m; }).join('\n\n') + statusInfo;
+                }
+                overlay.style.display = 'block';
+            };
+            document.addEventListener('click', function(e) {
+                var el = e.target;
+                if (el && (el.id === 'version-text' || el.id === 'game-version')) {
+                    tapCount++;
+                    clearTimeout(tapTimer);
+                    tapTimer = setTimeout(function() { tapCount = 0; }, 2000);
+                    if (tapCount >= 5) {
+                        tapCount = 0;
+                        window._showCrashOverlay();
+                    }
+                }
+            });
+
+            // 重置游戏（二次确认）
+            window._confirmResetGame = function() {
+                if (!confirm('⚠️ 确定要清除所有游戏数据吗？\n\n这将删除存档、日记、设置等所有数据，无法恢复！')) return;
+                if (!confirm('⚠️ 再次确认：真的要重置吗？\n\n所有数据将被永久删除！')) return;
+                try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    alert('所有数据已清除，页面即将刷新。');
+                    window.location.reload();
+                } catch(e) {
+                    alert('清除失败: ' + e.message);
+                }
+            };
+        })();
+    </script>
 
     <!-- 放置提示 (PC端放置家具时显示) -->
     <!-- 全局提示框 (跟随鼠标) -->
@@ -247,8 +350,8 @@
 
     <!-- 常驻状态面板 -->
     <div id="debug-panel">
-        <button class="debug-btn" id="btn-save" onclick="gameSaveManager.saveGame()">💾 保存</button>
-        <button class="debug-btn" id="btn-load" onclick="gameSaveManager.loadGame()">📂 读取</button>
+        <button class="debug-btn" id="btn-save" onclick="window.exportSaveToFile()">💾 保存</button>
+        <button class="debug-btn" id="btn-load" onclick="window.importSaveFromFile()">📂 读取</button>
         <button class="debug-btn" id="btn-manual" onclick="window.showManual()">📖 说明</button>
         <span id="game-version"
             style="color: rgba(255,255,255,0.7); font-size: 10px; margin-left: 5px; align-self: center;">V1.3</span>

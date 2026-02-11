@@ -5,7 +5,7 @@
 
 export class GameSaveManager {
     /**
-     * @param {Function} getGameData - 获取游戏数据的回调，返回 { cats, heartScore, activeDecorId, placedFurniture }
+     * @param {Function} getGameData - 获取游戏数据的回调，返回 { cats, heartScore, activeDecorId, placedFurniture, unrestoredFurniture }
      * @param {Function} restoreCallbacks - 恢复数据的回调对象 { setHeartScore, setActiveDecor, applyDecorVisuals, FURNITURE_DB }
      */
     constructor(getGameData, restoreCallbacks) {
@@ -40,13 +40,14 @@ export class GameSaveManager {
                 return {
                     id: p.dbItem.id, // 核心ID
                     pos: { x: f.position.x, y: f.position.y, z: f.position.z },
-                    rot: { y: f.rotation.y },
+                    rot: { x: f.rotation.x, y: f.rotation.y, z: f.rotation.z },
                     funcState: p.functionalState,
                     isBox: p.isBox,
                     isTipped: p.isTipped,
                     boxHeight: p.boxHeight
                 };
-            })
+            // [修复] 合并未能恢复的家具原始数据，防止跨设备存档丢失
+            }).concat(data.unrestoredFurniture || [])
         };
 
         localStorage.setItem(this.saveKey, JSON.stringify(saveData));
@@ -109,6 +110,14 @@ export class GameSaveManager {
     importSave(jsonString) {
         try {
             const parsed = JSON.parse(jsonString);
+
+            // [新增] 检测 debug 模式标记
+            if (parsed.debug === true) {
+                localStorage.setItem('cat_game_debug_restore', 'true');
+                console.log('[Import] 检测到 debug 标记，将进入逐步恢复模式');
+            } else {
+                localStorage.removeItem('cat_game_debug_restore');
+            }
 
             // 兼容新格式（含 diary）和旧格式（仅 game）
             if (parsed.game && typeof parsed.game === 'object') {
