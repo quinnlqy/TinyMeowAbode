@@ -192,6 +192,9 @@ const _downsampleCanvas = document.createElement('canvas');
 const _downsampleCtx = _downsampleCanvas.getContext('2d');
 function downsampleTexture(texture, levels = 1) {
     if (!isMobile || !texture || !texture.image) return;
+    // [修复] 防止重复降采样（clone 共享贴图引用，sanitizeMaterial 会被多次调用）
+    if (texture._downsampled) return;
+    texture._downsampled = true;
     const img = texture.image;
     // 兼容 Image / Canvas / ImageBitmap
     const srcW = img.width || img.naturalWidth;
