@@ -25,26 +25,31 @@ export function initPostProcessing(renderer, scene, camera) {
     const height = window.innerHeight;
 
     const composer = new EffectComposer(renderer);
-    
+
     // 1. 基础场景渲染
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
-    // 2. SSAO (环境光遮蔽) - 增加角落阴影和立体感
-    const saoPass = new SAOPass(scene, camera, false, true);
-    saoPass.params.output = 0; 
-    saoPass.params.saoBias = 0.5;
-    saoPass.params.saoIntensity = 0.05;
-    saoPass.params.saoScale = 100;
-    saoPass.params.saoKernelRadius = 30;
-    composer.addPass(saoPass);
+    // 检测移动端
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-    // 3. Bloom (辉光) - 让灯光和窗户有柔和光晕
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
-    bloomPass.threshold = 0.95;
-    bloomPass.strength = 0.15;
-    bloomPass.radius = 0.5;
-    composer.addPass(bloomPass);
+    // 2. SSAO (环境光遮蔽) - 仅PC端启用（性能消耗极大）
+    if (!isMobile) {
+        const saoPass = new SAOPass(scene, camera, false, true);
+        saoPass.params.output = 0;
+        saoPass.params.saoBias = 0.5;
+        saoPass.params.saoIntensity = 0.05;
+        saoPass.params.saoScale = 100;
+        saoPass.params.saoKernelRadius = 30;
+        composer.addPass(saoPass);
+
+        // 3. Bloom (辉光) - 仅PC端启用（多重全屏Buffer消耗显存）
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.95;
+        bloomPass.strength = 0.15;
+        bloomPass.radius = 0.5;
+        composer.addPass(bloomPass);
+    }
 
     // 4. 移轴效果 (TiltShift)
     const tiltShiftPass = new ShaderPass(CustomTiltShiftShader);
@@ -70,10 +75,10 @@ export function initPostProcessing(renderer, scene, camera) {
  */
 export function resizePostProcessing(composer) {
     if (!composer) return;
-    
+
     const width = window.innerWidth;
     const height = window.innerHeight;
-    
+
     composer.setSize(width, height);
     composer.passes.forEach(pass => {
         if (pass.uniforms && pass.uniforms['aspect']) {

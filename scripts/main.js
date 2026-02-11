@@ -1726,7 +1726,59 @@ function startMovingOld(m) {
 }
 
 
-function deleteSelected() { if (!selectedObject) return; scene.remove(selectedObject); const i = placedFurniture.indexOf(selectedObject); if (i > -1) placedFurniture.splice(i, 1); deselect(); }
+// 辅助函数：深度清理 3D 对象资源 (Geometry, Material, Texture)
+function disposeObject3D(obj) {
+    if (!obj) return;
+
+    // 递归清理子节点
+    if (obj.children) {
+        for (let i = obj.children.length - 1; i >= 0; i--) {
+            disposeObject3D(obj.children[i]);
+        }
+    }
+
+    // 清理 Geometry
+    if (obj.geometry) {
+        obj.geometry.dispose();
+    }
+
+    // 清理 Material & Textures
+    if (obj.material) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        materials.forEach(mat => {
+            // 清理材质上的所有纹理引用
+            Object.keys(mat).forEach(key => {
+                if (mat[key] && mat[key].isTexture) {
+                    mat[key].dispose();
+                }
+            });
+            // 清理材质本身
+            mat.dispose();
+        });
+    }
+
+    // 从父节点移除（如果尚未移除）
+    if (obj.parent) {
+        obj.parent.remove(obj);
+    }
+}
+
+function deleteSelected() {
+    if (!selectedObject) return;
+
+    // 1. 从场景移除
+    scene.remove(selectedObject);
+
+    // 2. 从数组移除
+    const i = placedFurniture.indexOf(selectedObject);
+    if (i > -1) placedFurniture.splice(i, 1);
+
+    // 3. [关键修复] 释放 GPU 资源 (防止显存泄漏)
+    disposeObject3D(selectedObject);
+
+    // 4. 重置状态
+    deselect();
+}
 
 // === 替换 onMove (增加拖拽逻辑) ===
 function onMove(e) {
@@ -1956,7 +2008,7 @@ function onWindowResize() {
             }
         });
     }
-    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+
 }
 
 
@@ -2004,26 +2056,34 @@ function updateCameraMovement(dt) {
 
 function animate() {
     requestAnimationFrame(animate);
-    const dt = gameClock.getDelta();
 
-    // 更新核心游戏逻辑（如果页面可见）
-    if (!document.hidden) {
-        updateGameLogic(dt);
+    try {
+        const dt = gameClock.getDelta();
+
+        // 更新核心游戏逻辑（如果页面可见）
+        if (!document.hidden) {
+            updateGameLogic(dt);
+        }
+
+        // 更新渲染（只在页面可见时）
+        updateCameraMovement(dt);
+        controls.update();
+        updateEnvironment(dt);
+        if (selectionBox) selectionBox.update();
+
+        // [新增] 更新照片系统（自动拍照检查）
+        if (photoManager) photoManager.update();
+
+        // [修改] 使用 composer 替代 renderer
+        if (composer) {
+            composer.render();
+        } else if (renderer && renderer.domElement) {
+            renderer.render(scene, camera); // 降级兼容
+        }
+    } catch (e) {
+        console.error("Render Loop Error:", e);
+        // 这里可以加上降级逻辑，比如停止某些特效
     }
-
-    // 更新渲染（只在页面可见时）
-    updateCameraMovement(dt);
-    controls.update();
-    updateEnvironment(dt);
-    if (selectionBox) selectionBox.update();
-
-    // [新增] 更新照片系统（自动拍照检查）
-    if (photoManager) photoManager.update();
-
-    // [修改] 使用 composer 替代 renderer
-    // renderer.render(scene, camera);  <-- 删掉或注释这行
-    if (composer) composer.render();    // <-- 改用这行
-    else renderer.render(scene, camera); // 降级兼容
 }
 
 // [新增] 核心游戏逻辑更新函数（可在后台调用）
@@ -2113,6 +2173,23 @@ function startGame() {
         renderer.toneMappingExposure = 1.2; // 曝光度，配合光照强度调整
 
         document.body.appendChild(renderer.domElement);
+
+        // [新增] WebGL上下文丢失处理 (防止黑屏)
+        renderer.domElement.addEventListener("webglcontextlost", function (event) {
+            event.preventDefault();
+            console.error("WebGL Context Lost! 显存不足或驱动崩溃，尝试恢复...");
+            // 可以暂停游戏循环或显示错误提示
+        }, false);
+
+        renderer.domElement.addEventListener("webglcontextrestored", function (event) {
+            console.log("WebGL Context Restored! 正在重建场景...");
+            // 这里应该重新加载纹理和Shader，但这通常由Three.js自动处理大部分
+            // 我们可能需要重置 EffectComposer
+            if (composer) {
+                // composer 可能需要重新初始化
+                // 简单起见，刷新页面可能是最稳妥的，或者至少重置 composer
+            }
+        }, false);
 
         scene = new THREE.Scene();
 
