@@ -27,19 +27,14 @@
                 else if (type === 'warn') line.className = 'log-warn'; consoleDiv.appendChild(line); consoleDiv.scrollTop = consoleDiv.scrollHeight;
             } console.log(msg);
         }
-        window.onerror = function (msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); document.getElementById('force-start-btn').style.display = 'block'; return false; };
+        window.onerror = function (msg, url, line) { logToScreen(`ERROR: ${msg} (Line ${line})`, 'error'); return false; };
     </script>
-    <!-- Mobile Console Debugging -->
-    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
-    <script>
-        // Initialize vConsole
-        var vConsole = new VConsole();
-    </script>
+    <!-- vConsole 已移除，如需调试请手动加载 -->
 </head>
 
 <body>
 
-    <div id="debug-console">系统日志...</div>
+    <!-- debug-console 已隐藏 -->
 
     <div id="loading-screen">
         <div id="loading-text">资源加载中...</div>

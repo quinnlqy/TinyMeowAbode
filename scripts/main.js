@@ -2444,6 +2444,22 @@ const photoManager = new PhotoManager();
 window.diaryManager = diaryManager;
 window.photoManager = photoManager;
 
+// === [新增] 每日登录奖励：第一次打开游戏 +50 爱心 ===
+(function checkDailyLoginReward() {
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    const lastRewardDate = localStorage.getItem('daily_reward_date');
+
+    if (lastRewardDate !== todayKey) {
+        localStorage.setItem('daily_reward_date', todayKey);
+        // 延迟执行，等游戏完全加载后再加
+        setTimeout(() => {
+            updateMoney(50);
+            console.log('[Daily] 每日登录奖励 +50 爱心');
+        }, 3000);
+    }
+})();
+
 // [修改] window.toggleDiary: 打开时触发 flushPendingEvents
 // [修改] 日记开关逻辑：修正音效播放位置
 window.toggleDiary = function () {

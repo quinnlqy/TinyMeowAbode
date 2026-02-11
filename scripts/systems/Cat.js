@@ -14,7 +14,7 @@ export class Cat {
         this.scene = scene;
         this.state = 'idle';
         this.stats = { hunger: 80, toilet: 80 };
-        
+
         // 目标和路径
         this.targetFurniture = null;
         this.interactTarget = null;
@@ -24,31 +24,31 @@ export class Cat {
         this.stopPos = new THREE.Vector3();
         this.jumpStart = new THREE.Vector3();
         this.jumpEnd = new THREE.Vector3();
-        
+
         // 动画
         this.mixer = null;
         this.actions = {};
         this.isAnimated = false;
         this.currentAction = null;
-        
+
         // 状态计时
         this.timer = 0;
         this.petCount = 0;
         this.patience = 5 + Math.floor(Math.random() * 6);
         this.angryTime = 0;
         this.sleepMinDuration = 0;
-        
+
         // UI元素
         this.bubbleEl = document.getElementById('cat-bubble');
         this.bubbleIcon = document.getElementById('bubble-icon');
-        
+
         // Mesh和射线
         this.mesh = new THREE.Group();
         this.scene.add(this.mesh);
         this.downRay = new THREE.Raycaster();
         this.downRay.ray.direction.set(0, -1, 0);
         this.forwardRay = new THREE.Raycaster();
-        
+
         this.initModel(color);
     }
 
@@ -61,12 +61,12 @@ export class Cat {
                 model.rotation.x = CAT_CONFIG.rotateX;
                 model.rotation.y = CAT_CONFIG.rotateY;
                 this.mesh.add(model);
-                
+
                 const anims = gameState.loadedModels['cat'].animations;
                 if (anims && anims.length > 0) {
                     this.isAnimated = true;
                     this.mixer = new THREE.AnimationMixer(model);
-                    
+
                     const getAnim = (idx) => anims[idx] || anims[0];
                     this.actions['sleep'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.sleep));
                     this.actions['happy'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.happy));
@@ -74,10 +74,10 @@ export class Cat {
                     this.actions['eat'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.eat));
                     this.actions['urgent'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.urgent));
                     this.actions['walk'] = this.mixer.clipAction(getAnim(CAT_CONFIG.anim.walk));
-                    
+
                     this.actions['sleep'].setLoop(THREE.LoopOnce);
                     this.actions['sleep'].clampWhenFinished = true;
-                    
+
                     this.playAction('idle');
                 }
             } else {
@@ -87,7 +87,7 @@ export class Cat {
             console.error("Cat init error:", e);
             this.mesh.add(this.createBlockCat(color));
         }
-        
+
         this.mesh.position.set(0, 0, 0);
         this.chooseNewAction();
     }
@@ -95,37 +95,37 @@ export class Cat {
     createBlockCat(color) {
         const group = new THREE.Group();
         const mat = new THREE.MeshStandardMaterial({ color: color });
-        
+
         const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.6), mat);
         body.position.y = 0.15;
         group.add(body);
-        
+
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.3), mat);
         head.position.set(0, 0.4, 0.4);
         group.add(head);
-        
+
         return group;
     }
 
     // ========== 动画控制 ==========
-    
+
     playAction(name, fadeTime = 0.3) {
         if (!this.isAnimated || !this.actions[name]) return;
-        
+
         if (this.currentAction === name) return;
-        
+
         const newAction = this.actions[name];
-        
+
         if (this.currentAction && this.actions[this.currentAction]) {
             this.actions[this.currentAction].fadeOut(fadeTime);
         }
-        
+
         newAction.reset().fadeIn(fadeTime).play();
         this.currentAction = name;
     }
 
     // ========== UI ==========
-    
+
     showBubble(icon) {
         if (!this.bubbleEl || !this.bubbleIcon) return;
         this.bubbleIcon.innerText = icon;
@@ -139,14 +139,14 @@ export class Cat {
 
     updateBubblePosition() {
         if (!this.bubbleEl || this.bubbleEl.classList.contains('hidden')) return;
-        
+
         const pos = this.mesh.position.clone();
         pos.y += 1.2;
         pos.project(gameState.camera);
-        
+
         const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
         const y = (-(pos.y * 0.5) + 0.5) * window.innerHeight;
-        
+
         this.bubbleEl.style.left = `${x}px`;
         this.bubbleEl.style.top = `${y}px`;
     }
@@ -154,7 +154,7 @@ export class Cat {
     updateUI() {
         const hungerLevel = document.getElementById('level-hunger');
         const toiletLevel = document.getElementById('level-toilet');
-        
+
         if (hungerLevel) {
             hungerLevel.style.height = `${this.stats.hunger}%`;
         }
@@ -164,44 +164,44 @@ export class Cat {
     }
 
     // ========== 移动 ==========
-    
+
     setPath(targetPos, stopDist = 0.5) {
         this.targetPos.copy(targetPos);
         this.stopPos.copy(targetPos);
-        
+
         const dir = new THREE.Vector3().subVectors(this.targetPos, this.mesh.position).normalize();
         this.stopPos.sub(dir.multiplyScalar(stopDist));
-        
+
         this.playAction('walk');
     }
 
     moveTowards(dt) {
         const direction = new THREE.Vector3().subVectors(this.stopPos, this.mesh.position);
         const distance = direction.length();
-        
+
         if (distance < 0.1) {
             return true; // 到达
         }
-        
+
         direction.normalize();
         const speed = 1.5;
         this.mesh.position.add(direction.multiplyScalar(speed * dt));
-        
+
         // 朝向目标
         const angle = Math.atan2(direction.x, direction.z);
         this.mesh.rotation.y = angle;
-        
+
         return false;
     }
 
     // ========== AI行为 ==========
-    
+
     chooseNewAction() {
         this.hideBubble();
-        
+
         const hour = new Date().getHours();
         const isDay = hour >= 6 && hour < 22;
-        
+
         // 饥饿检查
         if (this.stats.hunger < 40) {
             const foodBowl = this.findAvailableFurniture('food', 'full');
@@ -215,7 +215,7 @@ export class Cat {
                 this.showBubble('🐟');
             }
         }
-        
+
         // 如厕检查
         if (this.stats.toilet < 40) {
             const litterBox = this.findAvailableFurniture('toilet', 'clean');
@@ -229,24 +229,24 @@ export class Cat {
                 this.showBubble('💩');
             }
         }
-        
+
         // 随机行为
-        const boxes = gameState.placedFurniture.filter(f => 
+        const boxes = gameState.placedFurniture.filter(f =>
             f.userData.parentClass && f.userData.parentClass.isBox
         );
-        const sleepers = gameState.placedFurniture.filter(f => 
+        const sleepers = gameState.placedFurniture.filter(f =>
             f.userData.parentClass && f.userData.parentClass.dbItem.canSleep
         );
-        
+
         let target = null;
         const rnd = Math.random();
-        
+
         if (boxes.length > 0 && rnd < 0.4) {
             target = boxes[Math.floor(Math.random() * boxes.length)];
         } else if (sleepers.length > 0 && Math.random() < (isDay ? 0.3 : 0.6)) {
             target = sleepers[Math.floor(Math.random() * sleepers.length)];
         }
-        
+
         if (target) {
             this.interactTarget = target;
             this.setPath(target.position, 0.5);
@@ -281,9 +281,9 @@ export class Cat {
             this.timer = 2 + Math.random() * 3;
             return;
         }
-        
+
         const item = target.userData.parentClass;
-        
+
         if (item.dbItem.canSleep) {
             this.state = 'sleeping';
             this.sleepMinDuration = 10.0 + Math.random() * 10.0;
@@ -301,17 +301,17 @@ export class Cat {
             this.playAction('idle');
             this.timer = 2 + Math.random() * 3;
         }
-        
+
         this.lastInteractTarget = target;
     }
 
     // ========== 交互 ==========
-    
+
     pet() {
         if (this.state === 'angry') return;
-        
+
         this.petCount++;
-        
+
         if (this.petCount > this.patience) {
             this.state = 'angry';
             this.angryTime = 3.0;
@@ -325,7 +325,7 @@ export class Cat {
             audioManager.playSfx('meow_happy');
             gameState.updateMoney(1);
             diaryManager.logEvent('pet', {}, 40);
-            
+
             setTimeout(() => {
                 this.hideBubble();
                 if (this.state !== 'angry') {
@@ -336,21 +336,22 @@ export class Cat {
     }
 
     // ========== 更新循环 ==========
-    
+
     update(dt) {
         if (this.mixer) {
             this.mixer.update(dt);
         }
-        
+
         this.updateBubblePosition();
-        
-        // 状态衰减
-        this.stats.hunger -= dt * 0.5;
-        this.stats.toilet -= dt * 0.3;
+
+        // 饥饿：100→40 约需 4.8小时 (一天吃5顿)
+        this.stats.hunger -= dt * 0.00347;
+        // 如厕：100→40 约需 12小时 (一天拉2次)
+        this.stats.toilet -= dt * 0.00139;
         this.stats.hunger = Math.max(0, this.stats.hunger);
         this.stats.toilet = Math.max(0, this.stats.toilet);
         this.updateUI();
-        
+
         // 状态机
         switch (this.state) {
             case 'idle':
@@ -359,7 +360,7 @@ export class Cat {
                     this.chooseNewAction();
                 }
                 break;
-                
+
             case 'walking':
                 if (this.moveTowards(dt)) {
                     if (this.nextAction === 'EAT') {
@@ -376,7 +377,7 @@ export class Cat {
                     this.nextAction = null;
                 }
                 break;
-                
+
             case 'eating':
                 this.timer -= dt;
                 if (this.timer <= 0) {
@@ -390,7 +391,7 @@ export class Cat {
                     this.playAction('idle');
                 }
                 break;
-                
+
             case 'pooping':
                 this.timer -= dt;
                 if (this.timer <= 0) {
@@ -403,7 +404,7 @@ export class Cat {
                     this.playAction('idle');
                 }
                 break;
-                
+
             case 'sleeping':
                 this.sleepMinDuration -= dt;
                 if (this.sleepMinDuration <= 0 && Math.random() < 0.01) {
@@ -413,7 +414,7 @@ export class Cat {
                     this.playAction('idle');
                 }
                 break;
-                
+
             case 'playing':
                 this.timer -= dt;
                 if (this.timer <= 0) {
@@ -423,7 +424,7 @@ export class Cat {
                     this.playAction('idle');
                 }
                 break;
-                
+
             case 'angry':
                 this.angryTime -= dt;
                 if (this.angryTime <= 0) {
