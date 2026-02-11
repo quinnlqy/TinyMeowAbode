@@ -20,6 +20,70 @@ import { GameContext } from './core/GameContext.js';
 import { Cat } from './entities/Cat.js';
 import { FURNITURE_DB } from './data/FurnitureDB.js';
 import { DIARY_CONFIG } from './data/DiaryConfig.js';
+
+// === [新增] 动态加载日记扩展包（DiaryConfig2.js, DiaryConfig3.js, ...） ===
+async function loadDiaryExtensions() {
+    let i = 2;
+    while (true) {
+        try {
+            const module = await import(`./data/DiaryConfig${i}.js`);
+            const ext = module.DIARY_CONFIG_EXT;
+            if (!ext) break;
+            mergeDiaryConfig(DIARY_CONFIG, ext);
+            console.log(`[Diary] 已加载扩展包 DiaryConfig${i}.js`);
+            i++;
+        } catch (e) {
+            // 文件不存在则停止
+            break;
+        }
+    }
+}
+
+function mergeDiaryConfig(target, source) {
+    for (const key of Object.keys(source)) {
+        if (!(key in target)) {
+            // 新key，直接赋值
+            target[key] = source[key];
+        } else if (Array.isArray(target[key]) && Array.isArray(source[key])) {
+            // 数组：追加
+            target[key].push(...source[key]);
+        } else if (key === 'diary_meta') {
+            // diary_meta 内部的数组分别追加
+            for (const subKey of Object.keys(source[key])) {
+                if (Array.isArray(target[key][subKey]) && Array.isArray(source[key][subKey])) {
+                    target[key][subKey].push(...source[key][subKey]);
+                }
+            }
+        } else if (key === 'special_days') {
+            // 节日：合并（新日期直接加入，已有日期则追加文案）
+            for (const dateKey of Object.keys(source[key])) {
+                if (!target[key][dateKey]) {
+                    target[key][dateKey] = source[key][dateKey];
+                } else {
+                    const t = target[key][dateKey];
+                    const s = source[key][dateKey];
+                    if (s.weather) t.weather.push(...s.weather);
+                    if (s.mood) t.mood.push(...s.mood);
+                    if (s.events) t.events.push(...s.events);
+                }
+            }
+        } else if (key === 'specific_items') {
+            // 物品吐槽：合并（已有物品追加文案，新物品直接加入）
+            for (const itemId of Object.keys(source[key])) {
+                if (target[key][itemId]) {
+                    target[key][itemId].push(...source[key][itemId]);
+                } else {
+                    target[key][itemId] = source[key][itemId];
+                }
+            }
+        } else if (key === 'offline_events') {
+            // 离线事件：追加新条目
+            target[key].push(...source[key]);
+        }
+    }
+}
+
+loadDiaryExtensions();
 import { CustomTiltShiftShader } from './shaders/TiltShiftShader.js';
 import { initPostProcessing, resizePostProcessing } from './rendering/PostProcessing.js';
 import { playBounce, playToyAnim, spawnFloatingText, showEmoteBubble } from './utils/AnimationUtils.js';
@@ -97,6 +161,18 @@ if (isMobile) {
         if (e.target.closest('#items-scroll') || e.target.closest('.diary-entries') || e.target.closest('#confirm-dialog')) return;
         e.preventDefault();
     }, { passive: false });
+
+    // [新增] 强制滚动到顶部，防止 iOS Safari 地址栏造成偏移
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+
+    // [新增] 监听 visualViewport 变化（iOS Safari 地址栏伸缩）
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            window.scrollTo(0, 0);
+        });
+    }
 }
 
 const obstacles = []; const placedFurniture = []; const cats = [];
@@ -1190,6 +1266,11 @@ function renderShopItems(cat) {
 
             // === [修复] 移动端装饰类：首次点击预览，再次点击确认购买 ===
             if (isMobile && item.type === 'decor') {
+                // 已选中的装饰不可再点击
+                if (card.classList.contains('selected')) {
+                    Tooltip.show(`当前已在使用: ${item.name}`);
+                    return;
+                }
                 if (card.classList.contains('previewing')) {
                     // 第二次点击同一张卡片 → 确认购买
                     startNewPlacement(item.id);
@@ -1347,8 +1428,19 @@ window.startNewPlacement = function (id) {
 
 function handleDecorClick(item) {
     const type = item.decorType;
-    if (activeDecorId[type] === item.id) { activeDecorId[type] = null; restoreDecorState(type); updateStatusText("已恢复默认样式"); }
-    else { if (heartScore >= item.price) { updateMoney(-item.price); activeDecorId[type] = item.id; applyDecorVisuals(item); updateStatusText("已装修: " + item.name); } else { alert("金钱不足！"); } }
+    // [修复] 已选中的装饰不允许取消，只有换成别的时旧的才会被替换
+    if (activeDecorId[type] === item.id) {
+        updateStatusText("当前已在使用: " + item.name);
+        return;
+    }
+    if (heartScore >= item.price) {
+        updateMoney(-item.price);
+        activeDecorId[type] = item.id;
+        applyDecorVisuals(item);
+        updateStatusText("已装修: " + item.name);
+    } else {
+        alert("金钱不足！");
+    }
     // 重新渲染当前分类（修复：根据 decorType 确定当前分类）
     renderShopItems(type === 'wall' ? 'wallpaper' : 'flooring');
 }
@@ -2131,6 +2223,9 @@ function onWindowResize() {
     camera.left = -d * aspect; camera.right = d * aspect; camera.top = d; camera.bottom = -d;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // [新增] 防止 iOS Safari 页面偏移
+    if (isMobile) window.scrollTo(0, 0);
 
 
     // [新增] 更新移轴 Shader 的屏幕尺寸

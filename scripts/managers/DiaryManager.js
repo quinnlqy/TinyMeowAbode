@@ -210,7 +210,11 @@ export class DiaryManager {
         currentDayEntries.push(...this.pendingEvents);
         this.pendingEvents = [];
 
-        currentDayEntries.sort((a, b) => b.weight - a.weight);
+        // [修复] 按时间倒序排列（最新的在最前面），而非按权重
+        currentDayEntries.sort((a, b) => {
+            if (a.time && b.time) return b.time.localeCompare(a.time);
+            return 0;
+        });
 
         const uniqueEntries = [];
         const seenTexts = new Set();
@@ -300,7 +304,12 @@ export class DiaryManager {
         if (list.length === 0) {
             entriesContainer.innerHTML = '<div class="entry empty-tip">今天猫咪很懒，没有留下记录...</div>';
         } else {
-            list.forEach(item => {
+            // [修复] 按时间倒序显示，最新的排在最上面
+            const sorted = [...list].sort((a, b) => {
+                if (a.time && b.time) return b.time.localeCompare(a.time);
+                return 0;
+            });
+            sorted.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'entry';
                 div.innerHTML = `<div class="entry-time">${item.time}</div><div class="entry-text">${item.text}</div>`;

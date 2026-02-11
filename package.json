@@ -1,6 +1,6 @@
 {
   "name": "TinyMeowAbode",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "方寸喵居 - 你的治愈系猫咪小家",
   "scripts": {
     "start": "live-server --port=5500 --open=index.html",
