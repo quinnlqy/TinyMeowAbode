@@ -7,11 +7,19 @@ body {
     background-color: #e0f7fa;
     font-family: 'Microsoft YaHei', sans-serif;
     transition: background-color 1s;
+    /* Safari 防护：禁止长按弹出菜单、文本选中、触摸高亮 */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
 }
 
 canvas {
     display: block;
     outline: none;
+    /* 禁止 canvas 上的默认触摸行为（滚动/缩放），pointer 事件由 Three.js 管理 */
+    touch-action: none;
 }
 
 #loading-screen {
@@ -1745,4 +1753,61 @@ input[type=range] {
 
 #manual-close:hover {
     color: #333;
+}
+
+/* 家具状态气泡 */
+.furniture-bubble {
+    position: absolute;
+    background: white;
+    border: 3px solid #333;
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 24px;
+    pointer-events: none;
+    z-index: 50;
+    /* [修改] 低于商店UI (60)，高于 Canvas */
+    transform: translate(-50%, -100%);
+    /* 居中并在上方 */
+    white-space: nowrap;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    animation: bubble-float 2s ease-in-out infinite;
+    display: none;
+    /* 默认隐藏 */
+}
+
+/* 气泡下的小三角 */
+.furniture-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 8px 8px 0;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+}
+
+/* 内部白色小三角遮挡线 */
+.furniture-bubble::before {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 6px 6px 0;
+    border-style: solid;
+    border-color: white transparent transparent transparent;
+    z-index: 1;
+}
+
+@keyframes bubble-float {
+
+    0%,
+    100% {
+        transform: translate(-50%, -105%);
+    }
+
+    50% {
+        transform: translate(-50%, -95%);
+    }
 }

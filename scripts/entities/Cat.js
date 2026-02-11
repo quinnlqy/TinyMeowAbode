@@ -65,7 +65,7 @@ export class Cat {
         if (!this.bubbleEl || this.bubbleEl.classList.contains('hidden')) return;
         const camera = GameContext.camera;
         const pos = this.mesh.position.clone();
-        pos.y += 1.2;
+        pos.y += 0.6; // [修正] 降低高度 (从1.2改到0.6)
         pos.project(camera);
         const x = (pos.x * .5 + .5) * window.innerWidth;
         const y = (-(pos.y * .5) + .5) * window.innerHeight;

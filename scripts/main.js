@@ -8,7 +8,8 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 // === 模块化导入 ===
 import { AudioManager } from './managers/AudioManager.js';
-import { WeatherSystem, SkyShader, AuroraShader, createParticleTexture } from './systems/WeatherSystem.js';
+import { WeatherSystem, SkyShader, AuroraShader, WindowSkyShader, createParticleTexture } from './systems/WeatherSystem.js';
+
 import { DiaryManager } from './managers/DiaryManager.js';
 import { PhotoManager } from './managers/PhotoManager.js';
 import { GameSaveManager } from './managers/GameSaveManager.js';
@@ -26,6 +27,8 @@ import { InputManager } from './input/InputManager.js';
 
 // (已移除强制进入按钮的自动显示逻辑)
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
+
+const pendingWindowMaterials = [];
 
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
@@ -79,6 +82,22 @@ let inputManager = null;
 // === [新增] 移动端检测 ===
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 console.log(`[Device Check] isMobile: ${isMobile}, maxTouchPoints: ${navigator.maxTouchPoints}`);
+
+// === [新增] Safari/iOS 触摸行为防护 ===
+if (isMobile) {
+    // 阻止 Safari 双指缩放手势
+    document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+    document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
+    document.addEventListener('gestureend', e => e.preventDefault(), { passive: false });
+    // 阻止长按触发文本选中
+    document.addEventListener('selectstart', e => e.preventDefault());
+    // 阻止 touchmove 引起的页面滚动/橡皮筋效果
+    // 但放行商店滚动区和日记面板等可滚动区域
+    document.addEventListener('touchmove', e => {
+        if (e.target.closest('#items-scroll') || e.target.closest('.diary-entries') || e.target.closest('#confirm-dialog')) return;
+        e.preventDefault();
+    }, { passive: false });
+}
 
 const obstacles = []; const placedFurniture = []; const cats = [];
 let heartScore = 500; let currentCategory = 'furniture'; let activeDecorId = { floor: null, wall: null }; let skyPanels = [];
@@ -178,12 +197,30 @@ function sanitizeMaterial(child) {
         if (child.material.map) child.material.map.colorSpace = THREE.SRGBColorSpace;
 
         // 特殊处理玻璃/窗户
-        const isGlass = child.name.toLowerCase().includes('glass') || child.name.toLowerCase().includes('window');
+        const isGlass = child.name.toLowerCase().includes('glass');
+        const isWindow = child.name.toLowerCase().includes('window');
 
         child.material.metalness = 0.0; // 几乎无金属感（像粘土/塑料）
-        child.material.roughness = 0.7; // 高粗糙度，减少锐利反光，增加柔和感
+        child.material.roughness = 0.7; // 高粗糙度
 
-        if (isGlass) {
+        if (isWindow) {
+            // [修复] 窗户使用动态天空 Shader
+            const mat = new THREE.ShaderMaterial({
+                uniforms: {
+                    topColor: { value: new THREE.Color(0x0077ff) },
+                    bottomColor: { value: new THREE.Color(0xffffff) },
+                    starOpacity: { value: 0.0 },
+                    time: { value: 0.0 },
+                    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) } // 虽然不用resolution算UV，但保持一致
+                },
+                vertexShader: WindowSkyShader.vertex,
+                fragmentShader: WindowSkyShader.fragment,
+                side: THREE.FrontSide
+            });
+            child.material = mat;
+            pendingWindowMaterials.push(mat);
+
+        } else if (isGlass) {
             child.material.transparent = true;
             child.material.opacity = 0.3;
             child.material.color.setHex(0x88ccff);
@@ -839,6 +876,12 @@ const gameSaveManager = new GameSaveManager(
 window.switchCategory = function (cat) {
     currentCategory = cat;
 
+    // [修复] 移动端：切换分类时恢复装饰预览（需确保场景已初始化）
+    if (isMobile && floorPlane && wallGroup) {
+        restoreDecorState('floor');
+        restoreDecorState('wall');
+    }
+
     // [修改] 切换 Tab 的 active 样式
     const tabs = document.querySelectorAll('.shop-tab');
     const catMap = { 'furniture': 0, 'small': 1, 'wall': 2, 'wallpaper': 3, 'flooring': 4, 'rug': 5 };
@@ -1143,9 +1186,25 @@ function renderShopItems(cat) {
         // 点击事件
         card.onclick = (e) => {
             e.stopPropagation();
-            if (!card.classList.contains('disabled')) {
-                startNewPlacement(item.id);
+            if (card.classList.contains('disabled')) return;
+
+            // === [修复] 移动端装饰类：首次点击预览，再次点击确认购买 ===
+            if (isMobile && item.type === 'decor') {
+                if (card.classList.contains('previewing')) {
+                    // 第二次点击同一张卡片 → 确认购买
+                    startNewPlacement(item.id);
+                } else {
+                    // 第一次点击 → 预览
+                    // 清除其他卡片的预览状态
+                    c.querySelectorAll('.item-card.previewing').forEach(el => el.classList.remove('previewing'));
+                    card.classList.add('previewing');
+                    applyDecorVisuals(item);
+                    Tooltip.show(`👀 预览: ${item.name}  (再次点击确认购买)`);
+                }
+                return;
             }
+
+            startNewPlacement(item.id);
         };
 
         // 装饰预览事件
@@ -1701,6 +1760,12 @@ function startMovingOld(m) {
 
     // 3. 创建主体的虚影
     createGhost();
+
+    // [修复] 将 ghost 定位到原家具的位置和旋转，而非默认的 (0, -100, 0)
+    // 这在移动端尤为关键：用户未拖动前，ghost 应显示在原位
+    ghostMesh.position.copy(m.position);
+    ghostMesh.rotation.y = currentRotation;
+
     updateStatusText("正在移动...");
 
     // [新增] 显示操作提示
@@ -2293,7 +2358,21 @@ function startGame() {
 
         // [新增] 初始化天候系统
         weatherSystem = new WeatherSystem(scene, updateStatusText);
+
+        // [修复] 将加载时收集的窗户材质交给天气系统管理
+        weatherSystem.windowMaterials = pendingWindowMaterials;
+
         weatherSystem.updateSkyColor(visualHour, true);
+
+        // [新增] 初始化 GameContext (供 Furniture.js 使用 camera)
+        GameContext.init({
+            scene, camera, renderer,
+            loadedModels, placedFurniture, cats,
+            audioManager, diaryManager, gameSaveManager,
+            updateStatusText, showEmote, spawnHeart, logToScreen, showConfirmDialog,
+            CAT_CONFIG, FURNITURE_DB, DIARY_CONFIG,
+            isMobile // [新增]
+        });
 
         // [修复] 初始化时也需要设置正确的分辨率 (物理像素)
         //防止高分屏手机刚进游戏时天空颜色异常
@@ -2633,14 +2712,17 @@ function startGame() {
             };
 
             document.getElementById('btn-mobile-rotate').onclick = () => {
-                if (ghostMesh && mode === 'placing_new') {
+                if (ghostMesh && (mode === 'placing_new' || mode === 'moving_old')) {
                     currentRotation += Math.PI / 2;
                     ghostMesh.rotation.y = currentRotation;
+                    // [修复] 旋转后立即进行碰撞检测，更新状态
+                    checkColl(currentItemData.type === 'wall');
                 }
             };
 
             document.getElementById('btn-mobile-confirm').onclick = () => {
-                if (mode === 'placing_new' && canPlace && ghostMesh) {
+                const isPlacementMode = (mode === 'placing_new' || mode === 'moving_old');
+                if (isPlacementMode && canPlace && ghostMesh) {
                     confirmPlace();
                 } else if (!canPlace) {
                     // 无法放置时给予反馈
@@ -2960,6 +3042,12 @@ window.toggleShop = function () {
     } else {
         // === 关闭逻辑 ===
         shop.classList.add('hidden-bottom');
+
+        // [修复] 移动端：关闭商店时恢复装饰预览（需确保场景已初始化）
+        if (isMobile && floorPlane && wallGroup) {
+            restoreDecorState('floor');
+            restoreDecorState('wall');
+        }
 
         // 播放关闭音效
         audioManager.playSfx('ui_close');

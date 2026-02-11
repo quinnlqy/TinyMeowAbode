@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { WEATHER_CONFIG } from '../data/WeatherConfig.js';
+import { GameContext } from '../core/GameContext.js';
 
 // === 天空 Shader（动森风格夜空）===
 export const SkyShader = {
@@ -216,7 +217,7 @@ export function createParticleTexture(type) {
     const canvas = document.createElement('canvas');
     canvas.width = 32; canvas.height = 32;
     const ctx = canvas.getContext('2d');
-    
+
     if (type === 'snow') {
         const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
         grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
@@ -227,7 +228,7 @@ export function createParticleTexture(type) {
         ctx.fillStyle = 'rgba(200, 220, 255, 1.0)';
         ctx.fillRect(12, 0, 8, 32);
     }
-    
+
     const texture = new THREE.CanvasTexture(canvas);
     return texture;
 }
@@ -243,7 +244,7 @@ export class WeatherSystem {
         this.clouds = [];
         this.rainSystem = null;
         this.snowSystem = null;
-        
+
         this.windowMaterials = [];
         this.currentWeather = 'clear';
         this.lastWeatherCheckDate = null; // 记录上次检查天气的日期
@@ -253,10 +254,10 @@ export class WeatherSystem {
         this.initClouds();
         this.initPrecipitation();
     }
-    
+
     initSky() {
         const geo = new THREE.SphereGeometry(400, 32, 15);
-        
+
         this.skyMat = new THREE.ShaderMaterial({
             uniforms: {
                 topColor: { value: new THREE.Color(0x0077ff) },
@@ -276,15 +277,15 @@ export class WeatherSystem {
         this.dome.renderOrder = -1;
         this.scene.add(this.dome);
     }
-    
+
     initClouds() {
         const cloudGeo = new THREE.SphereGeometry(1, 12, 12);
-        const cloudMat = new THREE.MeshStandardMaterial({ 
-            color: 0xffffff, 
-            flatShading: true, 
-            opacity: 0.8, 
+        const cloudMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            flatShading: true,
+            opacity: 0.8,
             transparent: true,
-            depthWrite: false 
+            depthWrite: false
         });
 
         const directions = [
@@ -295,16 +296,16 @@ export class WeatherSystem {
         ];
 
         directions.forEach(dir => {
-            for(let i=0; i<3; i++) {
+            for (let i = 0; i < 3; i++) {
                 const cloudGroup = new THREE.Group();
-                
-                for(let j=0; j<3+Math.random()*2; j++) {
+
+                for (let j = 0; j < 3 + Math.random() * 2; j++) {
                     const mesh = new THREE.Mesh(cloudGeo, cloudMat.clone());
-                    mesh.position.set(Math.random()*2-1, Math.random()*1-0.5, Math.random()*1-0.5);
+                    mesh.position.set(Math.random() * 2 - 1, Math.random() * 1 - 0.5, Math.random() * 1 - 0.5);
                     mesh.scale.setScalar(0.8 + Math.random() * 0.5);
                     cloudGroup.add(mesh);
                 }
-                
+
                 cloudGroup.scale.setScalar(1.0);
 
                 // 云的高度：-4 到 4 之间随机（范围8）
@@ -341,54 +342,80 @@ export class WeatherSystem {
                         dir.minZ + Math.random() * (dir.maxZ - dir.minZ)
                     );
                 }
-                
+
                 this.scene.add(cloudGroup);
                 this.clouds.push(cloudGroup);
             }
         });
     }
-    
+
     initPrecipitation() {
         const count = 2000;
         const geo = new THREE.BufferGeometry();
         const pos = [];
-        
-        for(let i=0; i<count; i++) {
+        const sizes = []; // [新增]
+
+        const isMobile = GameContext.isMobile; // 获取移动端标记
+
+        for (let i = 0; i < count; i++) {
             pos.push(
-                (Math.random()-0.5)*100, 
-                Math.random()*60,       
-                (Math.random()-0.5)*100
+                (Math.random() - 0.5) * 100,
+                Math.random() * 60,
+                (Math.random() - 0.5) * 100
             );
+
+            // [新增] 随机大小逻辑
+            let s;
+            if (isMobile) {
+                // 手机端：以当前(20)为最大，范围 10~20
+                s = 10 + Math.random() * 10;
+            } else {
+                // 电脑端：范围更广 8~35，增加层次感
+                s = 8 + Math.random() * 27;
+            }
+            sizes.push(s);
         }
         geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-        
+        geo.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1)); // [新增] 传入Shader
+
         this.rainMat = new THREE.PointsMaterial({
             color: 0xddddff,
             size: 8.0,
-            map: createParticleTexture('rain'), 
-            transparent: true, 
+            map: createParticleTexture('rain'),
+            transparent: true,
             opacity: 0.8,
-            depthWrite: false, 
+            depthWrite: false,
             blending: THREE.AdditiveBlending
         });
-        
+
         this.snowMat = new THREE.PointsMaterial({
-            color: 0xffffff, 
-            size: 20.0,
-            map: createParticleTexture('snow'), 
-            transparent: true, 
+            color: 0xffffff,
+            size: 20.0, // 默认值（会被 aSize 覆盖）
+            map: createParticleTexture('snow'),
+            transparent: true,
             opacity: 0.9,
             depthWrite: false,
             blending: THREE.AdditiveBlending
         });
 
+        // [新增] 修改 Shader 使用 attribute size
+        this.snowMat.onBeforeCompile = (shader) => {
+            shader.vertexShader = `
+                attribute float aSize;
+                ${shader.vertexShader}
+            `.replace(
+                'gl_PointSize = size;',
+                'gl_PointSize = aSize;'
+            );
+        };
+
         this.precipSystem = new THREE.Points(geo, this.rainMat);
-        this.precipSystem.visible = false; 
-        this.precipSystem.renderOrder = 2; 
-        
+        this.precipSystem.visible = false;
+        this.precipSystem.renderOrder = 2;
+
         this.scene.add(this.precipSystem);
     }
-    
+
     /**
      * 设置天气
      * @param {string} type - 天气类型：'clear', 'rain', 'snow'
@@ -397,7 +424,7 @@ export class WeatherSystem {
     setWeather(type, isManual = false) {
         this.currentWeather = type;
         this.isManualWeather = isManual;
-        
+
         if (type === 'clear') {
             this.precipSystem.visible = false;
         } else {
@@ -416,38 +443,38 @@ export class WeatherSystem {
     checkDailyWeather() {
         const now = new Date();
         const todayKey = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
-        
+
         // 如果今天已经检查过天气，直接返回当前天气
         if (this.lastWeatherCheckDate === todayKey) {
             return this.currentWeather;
         }
-        
+
         // 新的一天，重新随机天气
         this.lastWeatherCheckDate = todayKey;
         this.isManualWeather = false; // 重置手动标记（新的一天开始自然天气）
-        
+
         const month = now.getMonth() + 1; // 1-12
         const dateKey = `${month}-${now.getDate()}`;
-        
+
         // 优先检查特殊日期配置
         if (WEATHER_CONFIG.special_date_weather && WEATHER_CONFIG.special_date_weather[dateKey]) {
             const specialWeather = WEATHER_CONFIG.special_date_weather[dateKey];
             this.setWeather(specialWeather, false);
             return specialWeather;
         }
-        
+
         // 使用月度概率配置
         const config = WEATHER_CONFIG.monthly_probability[month];
-        
+
         if (!config) {
             this.setWeather('clear', false);
             return 'clear';
         }
-        
+
         const rainProb = config.rain || 0;
         const snowProb = config.snow || 0;
         const random = Math.random();
-        
+
         // 优先判断下雪，然后下雨，最后晴天
         if (random < snowProb) {
             this.setWeather('snow', false);
@@ -471,7 +498,7 @@ export class WeatherSystem {
         if (this.isManualWeather) {
             return null;
         }
-        
+
         const descriptions = WEATHER_CONFIG.weather_descriptions[this.currentWeather];
         if (!descriptions || descriptions.length === 0) {
             return "☀️ 阳光正好，适合烤毛";
@@ -483,11 +510,11 @@ export class WeatherSystem {
     setTimeInstant(hour) {
         // 即时更新天空颜色
         this.updateSkyColor(hour, true);
-        
+
         // 即时更新星星
         const targetStarOpacity = (hour >= 19 || hour <= 5) ? 1.0 : 0.0;
         this.skyMat.uniforms.starOpacity.value = targetStarOpacity;
-        
+
         // 即时更新极光（融入shader）
         const targetAuroraOpacity = (hour >= 22 || hour < 3) ? 1.0 : 0.0;
         this.skyMat.uniforms.auroraOpacity.value = targetAuroraOpacity;
@@ -495,21 +522,21 @@ export class WeatherSystem {
 
     update(dt, hour) {
         this.updateSkyColor(hour);
-        
+
         // 更新shader时间（用于极光动画）
         this.skyMat.uniforms.time.value += dt;
 
         // 星星渐变
         let targetStarOpacity = 0;
         if (hour >= 19 || hour <= 5) targetStarOpacity = 1.0;
-        
+
         const currentStarOp = this.skyMat.uniforms.starOpacity.value;
         this.skyMat.uniforms.starOpacity.value += (targetStarOpacity - currentStarOp) * dt * 0.5;
 
         // 极光渐变 (22:00 - 03:00)
         let targetAuroraOpacity = 0;
         if (hour >= 22 || hour < 3) targetAuroraOpacity = 1.0;
-        
+
         const currentAuroraOp = this.skyMat.uniforms.auroraOpacity.value;
         this.skyMat.uniforms.auroraOpacity.value += (targetAuroraOpacity - currentAuroraOp) * dt * 0.5;
 
@@ -528,7 +555,7 @@ export class WeatherSystem {
         this.clouds.forEach(c => {
             if (c.userData.axis === 'x') {
                 c.position.x += c.userData.speed * c.userData.direction * dt;
-                
+
                 if (c.position.x > c.userData.maxX) {
                     c.position.x = c.userData.minX;
                 } else if (c.position.x < c.userData.minX) {
@@ -536,25 +563,25 @@ export class WeatherSystem {
                 }
             } else {
                 c.position.z += c.userData.speed * c.userData.direction * dt;
-                
+
                 if (c.position.z > c.userData.maxZ) {
                     c.position.z = c.userData.minZ;
                 } else if (c.position.z < c.userData.minZ) {
                     c.position.z = c.userData.maxZ;
                 }
             }
-            
+
             let cloudColor = 0xffffff;
-            if (hour >= 5 && hour < 9) { 
+            if (hour >= 5 && hour < 9) {
                 cloudColor = 0xffcba4;
-            } else if (hour >= 9 && hour < 17) { 
+            } else if (hour >= 9 && hour < 17) {
                 cloudColor = 0xffffff;
-            } else if (hour >= 17 && hour < 20) { 
+            } else if (hour >= 17 && hour < 20) {
                 cloudColor = 0xffa07a;
-            } else { 
+            } else {
                 cloudColor = 0x4a5568;
             }
-            
+
             c.children.forEach(m => {
                 if (m.material && m.material.color) {
                     m.material.color.lerp(new THREE.Color(cloudColor), dt * 0.5);
@@ -565,106 +592,106 @@ export class WeatherSystem {
         if (this.currentWeather !== 'clear' && this.precipSystem.visible) {
             const positions = this.precipSystem.geometry.attributes.position.array;
             const isRain = (this.currentWeather === 'rain');
-            
-            const speed = isRain ? 12 : 0.8; 
-            
+
+            const speed = isRain ? 12 : 0.8;
+
             const time = Date.now() * 0.001;
 
-            for(let i=0; i<positions.length; i+=3) {
-                positions[i+1] -= speed * dt;
-                
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 1] -= speed * dt;
+
                 if (!isRain) {
-                    positions[i] += Math.sin(time + positions[i+1] * 0.1) * 0.05 * dt; 
+                    positions[i] += Math.sin(time + positions[i + 1] * 0.1) * 0.05 * dt;
                 }
 
-                if (positions[i+1] < -5) {
+                if (positions[i + 1] < -5) {
                     // 重置Y坐标，并重新随机X和Z坐标，防止雪花飘出可见范围
                     positions[i] = (Math.random() - 0.5) * 100;   // 重置X
-                    positions[i+1] = 50;                           // 重置Y
-                    positions[i+2] = (Math.random() - 0.5) * 100;  // 重置Z
+                    positions[i + 1] = 50;                           // 重置Y
+                    positions[i + 2] = (Math.random() - 0.5) * 100;  // 重置Z
                 }
             }
             this.precipSystem.geometry.attributes.position.needsUpdate = true;
-            
-            if(isRain) {
+
+            if (isRain) {
                 this.clouds.forEach(c => c.children.forEach(m => m.material.color.setHex(0x888888)));
             } else {
                 this.clouds.forEach(c => c.children.forEach(m => m.material.color.setHex(0xffffff)));
             }
         }
     }
-    
-    updateSkyColor(hour, isInstant = false) { 
+
+    updateSkyColor(hour, isInstant = false) {
         // [新增] 阴天颜色方案（雨天/雪天）
         const cloudyDayTop = new THREE.Color(0x8899aa); // 灰蓝色天空
         const cloudyDayBot = new THREE.Color(0xc0c8d0); // 浅灰色
-        
+
         const cloudyDawnTop = new THREE.Color(0x6a7a8a);
         const cloudyDawnBot = new THREE.Color(0xb0b8c0);
-        
+
         const cloudyDuskTop = new THREE.Color(0x4a5568);
         const cloudyDuskBot = new THREE.Color(0x8090a0);
-        
+
         const cloudyNightTop = new THREE.Color(0x1a1a28);
         const cloudyNightBot = new THREE.Color(0x3a3a50);
-        
+
         // 晴天颜色方案
         const dawnTop = new THREE.Color(0x607d8b);
         const dawnBot = new THREE.Color(0xffe0b2);
-        
-        const dayTop = new THREE.Color(0x4fc3f7); 
-        const dayBot = new THREE.Color(0xffffff); 
-        
+
+        const dayTop = new THREE.Color(0x4fc3f7);
+        const dayBot = new THREE.Color(0xffffff);
+
         const duskTop = new THREE.Color(0x2c3e50);
         const duskBot = new THREE.Color(0xffcc80);
-        
-        const nightTop = new THREE.Color(0x0a0a12); 
+
+        const nightTop = new THREE.Color(0x0a0a12);
         const nightBot = new THREE.Color(0x1a237e);
 
         let t = this.skyMat.uniforms.topColor.value;
         let b = this.skyMat.uniforms.bottomColor.value;
-        
+
         const lerpFactor = isInstant ? 1.0 : 0.01;
-        
+
         // [修改] 根据天气类型选择颜色
         const isCloudy = (this.currentWeather === 'rain' || this.currentWeather === 'snow');
 
-        if (hour >= 5 && hour < 9) { 
+        if (hour >= 5 && hour < 9) {
             if (isCloudy) {
-                t.lerp(cloudyDawnTop, lerpFactor); 
+                t.lerp(cloudyDawnTop, lerpFactor);
                 b.lerp(cloudyDawnBot, lerpFactor);
             } else {
-                t.lerp(dawnTop, lerpFactor); 
+                t.lerp(dawnTop, lerpFactor);
                 b.lerp(dawnBot, lerpFactor);
             }
-        } else if (hour >= 9 && hour < 17) { 
+        } else if (hour >= 9 && hour < 17) {
             if (isCloudy) {
-                t.lerp(cloudyDayTop, lerpFactor); 
+                t.lerp(cloudyDayTop, lerpFactor);
                 b.lerp(cloudyDayBot, lerpFactor);
             } else {
-                t.lerp(dayTop, lerpFactor); 
+                t.lerp(dayTop, lerpFactor);
                 b.lerp(dayBot, lerpFactor);
             }
-        } else if (hour >= 17 && hour < 20) { 
+        } else if (hour >= 17 && hour < 20) {
             if (isCloudy) {
-                t.lerp(cloudyDuskTop, lerpFactor); 
+                t.lerp(cloudyDuskTop, lerpFactor);
                 b.lerp(cloudyDuskBot, lerpFactor);
             } else {
-                t.lerp(duskTop, lerpFactor); 
+                t.lerp(duskTop, lerpFactor);
                 b.lerp(duskBot, lerpFactor);
             }
-        } else { 
+        } else {
             if (isCloudy) {
-                t.lerp(cloudyNightTop, lerpFactor); 
+                t.lerp(cloudyNightTop, lerpFactor);
                 b.lerp(cloudyNightBot, lerpFactor);
             } else {
-                t.lerp(nightTop, lerpFactor); 
+                t.lerp(nightTop, lerpFactor);
                 b.lerp(nightBot, lerpFactor);
             }
         }
 
         this.windowMaterials.forEach(mat => {
-            if(mat && mat.uniforms && mat.uniforms.topColor) {
+            if (mat && mat.uniforms && mat.uniforms.topColor) {
                 mat.uniforms.topColor.value.copy(t);
                 mat.uniforms.bottomColor.value.copy(b);
             }

@@ -112,9 +112,60 @@ export class Furniture {
 
         if (this.dbItem.subType === 'food') {
             this.functionalState === 'full' ? setVis(false, true) : setVis(true, false);
+            // [新增] 空碗显示气泡
+            if (this.functionalState === 'empty') this.showBubble('🥣');
+            else this.hideBubble();
+
         } else if (this.dbItem.subType === 'toilet') {
             this.functionalState === 'clean' ? setVis(false, true) : setVis(true, false);
+            // [新增] 脏猫砂盆显示气泡
+            if (this.functionalState === 'dirty') this.showBubble('💩');
+            else this.hideBubble();
         }
+    }
+
+    // [新增] 显示持久化气泡
+    showBubble(emoji) {
+        if (!this.bubbleElement) {
+            this.bubbleElement = document.createElement('div');
+            this.bubbleElement.className = 'furniture-bubble';
+            document.body.appendChild(this.bubbleElement);
+        }
+        this.bubbleElement.innerText = emoji;
+        this.bubbleElement.style.display = 'block';
+        this.updateBubblePosition();
+    }
+
+    // [新增] 隐藏气泡
+    hideBubble() {
+        if (this.bubbleElement) {
+            this.bubbleElement.style.display = 'none';
+        }
+    }
+
+    // [新增] 更新气泡位置 (3D -> 2D)
+    updateBubblePosition() {
+        if (!this.mesh || !GameContext.camera) return;
+
+        const pos = this.mesh.position.clone();
+        pos.y += 0.5; // [修改] 降低高度 (从1.5改为0.5)，贴近物体
+
+        // 投影到屏幕坐标
+        pos.project(GameContext.camera);
+
+        // 检查是否在相机视野后方 (NDZ z > 1)
+        // 注意：OrthographicCamera 的 project 结果 z 在 -1 到 1 之间
+        // 如果是 PerspectiveCamera，z > 1 说明在后面。
+        // 但 OrthographicCamera 即使在后面 z 也可能在范围内？
+        // 不，project() 会正确处理。
+        // 关键是：如果 z > 1 或 z < -1 (视锥体外)，应该隐藏？
+        // 这里简单判断 x, y 是否在屏幕内
+
+        const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-(pos.y * 0.5) + 0.5) * window.innerHeight;
+
+        this.bubbleElement.style.left = x + 'px';
+        this.bubbleElement.style.top = y + 'px';
     }
 
     interact() {
@@ -194,11 +245,13 @@ export class Furniture {
         if (this.callbacks.saveGame) this.callbacks.saveGame();
     }
 
-    /**
-     * 更新逻辑 (每一帧调用)
-     * @param {number} dt Delta time
-     */
+    // 更新逻辑 (每一帧调用)
     update(dt) {
+        // [新增] 更新气泡位置 (如果有)
+        if (this.bubbleElement && this.bubbleElement.style.display !== 'none') {
+            this.updateBubblePosition();
+        }
+
         if (!this.isVehicle) return;
 
         // 根据当前阶段执行不同逻辑
