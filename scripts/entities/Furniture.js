@@ -94,7 +94,7 @@ export class Furniture {
 
         // 新购买的功能性家具初始状态：食物盆是空的，猫砂盆是干净的
         if (this.dbItem.subType === 'food') {
-            this.functionalState = 'empty';  // 新买的碗是空的，需要添加食物
+            this.functionalState = 'full';  // [修改] 新买的碗是满的 (用户体验优化)
         } else if (this.dbItem.subType === 'toilet') {
             this.functionalState = 'clean';  // 新买的猫砂盆是干净的
         }

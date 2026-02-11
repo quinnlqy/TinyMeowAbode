@@ -30,7 +30,7 @@ import { InputManager } from './input/InputManager.js';
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.0.1 (Debug)";
+window.GAME_VERSION = "v1.1";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // 更新 Loading Screen 的版本号
@@ -1356,16 +1356,52 @@ function checkColl(isWall) {
 
 function confirmPlace() {
     if (mode === 'placing_new') {
-        if (heartScore >= currentItemData.price)
+        if (heartScore >= currentItemData.price) {
+            // [新增] 余额告急提示：只有在心心完全花光时才提示 (threshold < 1)
+            if (heartScore - currentItemData.price < 1) {
+                const dialog = document.getElementById('confirm-dialog');
+                if (dialog) {
+                    const title = document.getElementById('dialog-title');
+                    const msg = document.getElementById('dialog-msg');
+                    if (title) title.innerText = "余额告急";
+                    if (msg) msg.innerHTML = "本次购买后，余额为0。<br>确认购买吗？";
+
+                    dialog.style.display = 'block'; // [Fix] flex -> block for vertical layout
+
+                    const yesBtn = document.getElementById('btn-confirm-yes'); // [Fix] Correct ID
+                    const noBtn = dialog.querySelector('.btn-no');             // [Fix] Class selector
+
+                    // 临时覆盖 onclick
+                    if (yesBtn) {
+                        yesBtn.onclick = () => {
+                            dialog.style.display = 'none';
+                            updateMoney(-currentItemData.price);
+                            finalizePlacement();
+                        };
+                    }
+                    if (noBtn) {
+                        noBtn.onclick = () => {
+                            dialog.style.display = 'none';
+                            cancelPlace();
+                        };
+                    }
+                    return;
+                }
+            }
+
+            // 正常流程
             updateMoney(-currentItemData.price);
-        else {
+        } else {
             alert("金钱不足!");
             cancelPlace();
             gameSaveManager.saveGame();
             return;
         }
     }
+    finalizePlacement();
+}
 
+function finalizePlacement() {
     // 隐藏放置提示并移除监听
     // 隐藏放置提示
     Tooltip.hide();
@@ -1850,6 +1886,11 @@ function onMove(e) {
                         offsetDepth = currentItemData.size.z / 2;
                         break;
                 }
+
+                // [新增] 允许你在 DB 里配 wallOffset: -0.1 来把贴墙距离改小
+                if (currentItemData.wallOffset !== undefined) {
+                    offsetDepth += currentItemData.wallOffset;
+                }
                 const offset = offsetDepth + 0.01;
 
                 const pos = h.point.clone().add(n.clone().multiplyScalar(offset));
@@ -1872,6 +1913,18 @@ function onMove(e) {
                 }
 
                 checkColl(true);
+            } else {
+                // [修复] 如果没对应到墙（比如在地面），也要显示虚影（红色的），并禁止放置
+                const floorHits = raycaster.intersectObject(floorPlane);
+                if (floorHits.length > 0) {
+                    const p = floorHits[0].point;
+                    ghostMesh.position.set(p.x, 0, p.z);
+                    ghostMesh.lookAt(p.x, 0, p.z - 1); // 默认朝向
+                    // 变红
+                    ghostMesh.traverse(c => { if (c.isMesh) c.material.color.setHex(0xff0000); });
+                    canPlace = false;
+                    updateStatusText("仅限墙面", "invalid");
+                }
             }
             return;
         }
@@ -1993,9 +2046,22 @@ function rotateItem() {
 // === 动画函数已迁移到 ./utils/AnimationUtils.js ===
 
 
+
+function getCameraFrustumSize() {
+    const aspect = window.innerWidth / window.innerHeight;
+    let d = 8;
+    if (aspect < 1.0) {
+        // [优化] 手机竖屏时，自动拉远镜头以确保显示完整房间宽度
+        // 目标宽度覆盖约 14 单位 (墙壁在 -5 到 5，留余量)
+        // items width = 2 * d * aspect >= 14
+        d = Math.max(8, 7.5 / aspect);
+    }
+    return d;
+}
+
 function onWindowResize() {
     const aspect = window.innerWidth / window.innerHeight;
-    const d = 8;
+    const d = getCameraFrustumSize();
 
     camera.left = -d * aspect; camera.right = d * aspect; camera.top = d; camera.bottom = -d;
     camera.updateProjectionMatrix();
@@ -2068,8 +2134,22 @@ function updateCameraMovement(dt) {
     controls.target.add(actualDisplacement);
 }
 
-function animate() {
+// [新增] FPS 限制变量 (60 FPS)
+const fpsInterval = 1000 / 60;
+let lastFrameTime = 0;
+
+function animate(currentTime) {
     requestAnimationFrame(animate);
+
+    // [新增] 限制 FPS (解决高刷屏黑块问题)
+    if (!currentTime) currentTime = performance.now();
+    if (!lastFrameTime) lastFrameTime = currentTime;
+    const elapsed = currentTime - lastFrameTime;
+
+    if (elapsed < fpsInterval) return;
+
+    // 校准时间，保持平滑 (扣除多余的 elapsed)
+    lastFrameTime = currentTime - (elapsed % fpsInterval);
 
     try {
         const dt = gameClock.getDelta();
@@ -2231,9 +2311,10 @@ function startGame() {
             weatherSystem.checkDailyWeather();
         }
 
+
         const aspect = window.innerWidth / window.innerHeight;
-        // [修改] 将 d=12 改为 d=9 (数值越小，镜头越近)
-        const d = 8;
+        // [修改] 使用自适应 d 值
+        const d = getCameraFrustumSize();
         // [修复1] 调整相机剪裁面 (防止近处闪黑片)
         // near 改为 -100 (关键！允许渲染相机后方的物体，防止旋转时被切掉)
         // far 改为 1000 (足够远)
@@ -2469,6 +2550,7 @@ function startGame() {
             if (savedData.catStats) {
                 newCat.stats.hunger = savedData.catStats.hunger;
                 newCat.stats.toilet = savedData.catStats.toilet;
+                if (savedData.catStats.angryTime) newCat.angryTime = savedData.catStats.angryTime; // [新增] 恢复生气时间
             }
 
             // 2. 恢复家具

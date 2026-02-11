@@ -31,6 +31,7 @@ export class GameSaveManager {
             catStats: {
                 hunger: data.cats[0].stats.hunger,
                 toilet: data.cats[0].stats.toilet,
+                angryTime: data.cats[0].angryTime || 0 // [新增] 保存生气时间
             },
 
             // 3. 家具列表

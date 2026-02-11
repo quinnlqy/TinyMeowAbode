@@ -23,8 +23,8 @@ export const FURNITURE_DB = [
         fullModelFile: 'LitterBox_Clean.glb',
         modelScale: 0.5, fixBottom: true, size: { x: 1.0, y: 0.4, z: 1.0 }
     },
-    { id: 'rug', type: 'floor', layer: 0, name: '圆地毯', price: 20, color: 0x3498db, size: { x: 2, y: 0.02, z: 2 }, modelFile: 'RoundRug.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
-    { id: 'rug_squre', type: 'floor', layer: 0, name: '方地毯', price: 20, color: 0x3498db, size: { x: 2, y: 0.02, z: 2 }, modelFile: 'rug_squre.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
+    { id: 'rug', type: 'floor', layer: 0, name: '圆地毯', price: 50, color: 0x3498db, size: { x: 2, y: 0.02, z: 2 }, modelFile: 'RoundRug.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
+    { id: 'rug_squre', type: 'floor', layer: 0, name: '方地毯', price: 50, color: 0x3498db, size: { x: 2, y: 0.02, z: 2 }, modelFile: 'rug_squre.glb', modelScale: 1.5, yFix: 0.02, autoCenter: true },
     { id: 'bed', type: 'floor', layer: 1, name: '猫窝', price: 40, color: 0xe67e22, size: { x: 1, y: 0.5, z: 0.8 }, modelFile: 'bed.glb', modelScale: 0.8, canSleep: true, fixBottom: true },
     { id: 'PetBed', type: 'floor', layer: 1, name: '竹编猫窝', price: 40, color: 0xe67e22, size: { x: 1, y: 0.5, z: 0.8 }, modelFile: 'PetBed.glb', modelScale: 0.6, canSleep: true, fixBottom: true },
 
@@ -40,7 +40,7 @@ export const FURNITURE_DB = [
     { id: 'TelevisionTable', type: 'floor', layer: 1, name: '电视柜', price: 100, color: 0xe74c3c, size: { x: 1.2, y: 1, z: 1.2 }, modelFile: 'TelevisionTable.glb', modelScale: 1.5, canSleep: false, fixBottom: true },
     { id: 'Folding_Screen', type: 'floor', layer: 1, name: '屏风', price: 100, color: 0xe74c3c, size: { x: 1.2, y: 1, z: 1.2 }, modelFile: 'Folding_Screen.glb', modelScale: 2, canSleep: false, fixBottom: true },
     { id: 'Cushion_Roundel', type: 'floor', layer: 1, name: '圆垫子', price: 40, color: 0xe67e22, size: { x: 1, y: 0.2, z: 0.8 }, modelFile: 'Cushion_Roundel.glb', modelScale: 0.5, canSleep: true, fixBottom: true },
-    { id: 'Go_Board', type: 'floor', layer: 1, name: '围棋', price: 40, color: 0xe67e22, size: { x: 1, y: 0.6, z: 1 }, modelFile: 'Go_Board.glb', modelScale: 0.6, canSleep: true, fixBottom: true },
+    { id: 'Go_Board', type: 'floor', layer: 1, name: '围棋', price: 40, color: 0xe67e22, size: { x: 1, y: 0.6, z: 1 }, modelFile: 'Go_Board.glb', modelScale: 1.2, canSleep: true, fixBottom: true },
     { id: 'Closet', type: 'floor', layer: 1, name: '衣柜', price: 40, color: 0xe67e22, size: { x: 2, y: 3.0, z: 0.8 }, modelFile: 'Closet.glb', modelScale: 1.6, canSleep: false, fixBottom: true },
     { id: 'Cabinet', type: 'floor', layer: 1, isSurface: true, name: '矮柜', price: 40, color: 0xe67e22, size: { x: 1, y: 1, z: 0.8 }, modelFile: 'Cabinet.glb', modelScale: 0.5, canSleep: false, fixBottom: true },
     { id: 'WoodenCabi', type: 'floor', layer: 1, isSurface: true, name: '矮木柜', price: 40, color: 0xe67e22, size: { x: 1.5, y: 1.2, z: 0.8 }, modelFile: 'WoodenCabi.glb', modelScale: 0.8, canSleep: false, fixBottom: true },
@@ -56,7 +56,7 @@ export const FURNITURE_DB = [
     { id: 'CafeTree', type: 'floor', layer: 1, name: '大盆栽', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'CafeTree.glb', modelScale: 1.0, fixBottom: true },
     { id: 'PottedGreenPlant', type: 'floor', layer: 1, name: '大盆栽', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'PottedGreenPlant.glb', modelScale: 1.0, fixBottom: true },
     { id: 'GreenPlant', type: 'floor', layer: 1, name: '盆栽', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'GreenPlant.glb', modelScale: 1.0, fixBottom: true },
-    { id: 'OrangeTree', type: 'floor', layer: 1, name: '橘子盆摘', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'OrangeTree.glb', modelScale: 1.0, fixBottom: true },
+    { id: 'OrangeTree', type: 'floor', layer: 1, name: '橘子盆摘', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'OrangeTree.glb', modelScale: 1.5, fixBottom: true },
 
     { id: 'Television', type: 'floor', layer: 1, name: '电视', price: 100, color: 0x8e44ad, size: { x: 1.9, y: 1.5, z: 0.8 }, modelFile: 'Television.glb', modelScale: 1.0, fixBottom: true },
     { id: 'table', type: 'floor', layer: 1, isSurface: true, surfaceHeight: 0.8, name: '木桌', price: 60, color: 0x8d6e63, size: { x: 1.5, y: 0.6, z: 1.5 }, modelFile: 'table.glb', modelScale: 1.0, fixBottom: true },
@@ -78,7 +78,7 @@ export const FURNITURE_DB = [
         lightType: 'point',
         lightOffset: { x: 0, y: 1.8, z: 0 }
     },
-    { id: 'fireplace', type: 'floor', layer: 1, name: '壁炉', price: 100, color: 0x8d6e63, size: { x: 1.5, y: 1.5, z: 1 }, modelFile: 'fireplace.glb', modelScale: 1.8, fixBottom: true },
+    { id: 'fireplace', type: 'floor', layer: 1, name: '壁炉', price: 100, color: 0x8d6e63, size: { x: 1.5, y: 1.5, z: 1 }, modelFile: 'fireplace.glb', modelScale: 3.0, fixBottom: true },
     { id: 'frigerator', type: 'floor', layer: 1, name: '冰箱', price: 100, color: 0x8d6e63, size: { x: 1.5, y: 1.5, z: 1 }, modelFile: 'frigerator.glb', modelScale: 1.0, fixBottom: true },
     { id: 'RobotVacuum', type: 'floor', layer: 1, name: '扫地机器人', price: 100, color: 0x8d6e63, size: { x: 0.8, y: 0.3, z: 0.8 }, modelFile: 'RobotVacuum.glb', modelScale: 0.5, fixBottom: true, isVehicle: true, moveSpeed: 1.5 },
 
@@ -122,7 +122,7 @@ export const FURNITURE_DB = [
 
     { id: 'WoodenCabinet', type: 'wall', layer: 1, name: '壁柜', price: 20, color: 0x2ecc71, size: { x: 0.5, y: 0.5, z: 2.0 }, modelFile: 'WoodenCabinet.glb', wallFace: 'left', modelScale: 0.8 },
     { id: 'WallClock', type: 'wall', layer: 1, name: '挂钟', price: 20, color: 0x2ecc71, size: { x: 0.6, y: 0.5, z: 0.5 }, modelFile: 'WallClock.glb', modelScale: 0.5 },
-    { id: 'CalligraphyFu', type: 'wall', layer: 1, name: '春节福', price: 20, color: 0x2ecc71, size: { x: 0.6, y: 0.5, z: 0.5 }, modelFile: 'CalligraphyFu.glb', modelScale: 0.5 },
+    { id: 'CalligraphyFu', type: 'wall', layer: 1, name: '春节福', price: 20, color: 0x2ecc71, size: { x: 0.6, y: 0.5, z: 0.5 }, modelFile: 'CalligraphyFu.glb', modelScale: 0.5, wallOffset: -0.22, allowOverlap: true },
     { id: 'XingshiMask', type: 'wall', layer: 1, name: '醒狮面具', price: 20, color: 0x2ecc71, size: { x: 0.6, y: 0.5, z: 0.5 }, modelFile: 'XingshiMask.glb', modelScale: 0.5 },
     { id: 'RedKnot', type: 'wall', layer: 1, name: '中国结', price: 20, color: 0x2ecc71, size: { x: 0.6, y: 0.5, z: 0.5 }, modelFile: 'RedKnot.glb', modelScale: 0.5 },
 
@@ -136,7 +136,7 @@ export const FURNITURE_DB = [
 
     // 装饰类型 - 地板
     { id: 'floor_wood', type: 'decor', name: '木纹地板', price: 50, color: 0x8d6e63, decorType: 'floor', textureFile: 'WoodenFloor.jpg' },
-    { id: 'floor_tile', type: 'decor', name: '白瓷砖', price: 50, color: 0xdbc2a3, decorType: 'floor', textureFile: 'tile.jpg' },
+    { id: 'floor_tile', type: 'decor', name: '浅色木地板', price: 50, color: 0xdbc2a3, decorType: 'floor', textureFile: 'tile.jpg' },
     { id: 'floor_plank', type: 'decor', name: '原木板地板', price: 60, color: 0x9e7b5d, decorType: 'floor', textureFile: 'plank_flooring_04_diff_1k.jpg' },
     { id: 'floor_flower', type: 'decor', name: '花砖地板', price: 80, color: 0xe8d4c4, decorType: 'floor', textureFile: 'FlowerFloor.png' },
     { id: 'floor_darkwood', type: 'decor', name: '深色木地板', price: 70, color: 0x5d4037, decorType: 'floor', textureFile: 'wood.jpg' },

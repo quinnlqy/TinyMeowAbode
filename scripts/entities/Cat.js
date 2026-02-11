@@ -139,7 +139,18 @@ export class Cat {
         }
 
         if (this.interactTarget && (!placedFurniture.includes(this.interactTarget) || !this.interactTarget.visible)) { this.interrupt(); return; }
-        if (this.state === 'angry') { if (Date.now() > this.angryTime) { this.state = 'idle'; this.patience = 5 + Math.floor(Math.random() * 6); this.petCount = 0; GameContext.updateStatusText("猫咪气消了"); } }
+        // [修复] 全局检查生气冷却，不再依赖 state === 'angry'
+        // 这样即使猫在走路或发呆，时间到了也会消气
+        if (this.angryTime > 0 && Date.now() > this.angryTime) {
+            this.angryTime = 0;
+            this.petCount = 0;
+            this.patience = 5 + Math.floor(Math.random() * 6);
+            GameContext.updateStatusText("猫咪气消了");
+            // 如果此时猫咪是闲置状态，给个表情提示
+            if (this.state === 'idle') {
+                GameContext.showEmote(this.mesh.position, '❤️');
+            }
+        }
 
         if (this.state === 'walking') { this.handleWalkingLogic(dt); }
         else if (this.state === 'jumping') { this.updateJumping(dt); }
@@ -623,9 +634,13 @@ export class Cat {
 
         if (this.state === 'dragged') return;
 
-        if (this.state === 'angry') {
+        // [修复] 检查生气冷却时间，而不是 state
+        if (this.angryTime > Date.now()) {
             audioManager.playSfx('meow_angry');
             GameContext.showEmote(this.mesh.position, '💢');
+            // 显示剩余时间提示
+            const remainingMins = Math.ceil((this.angryTime - Date.now()) / 60000);
+            GameContext.updateStatusText(`猫咪还在生气 (剩余 ${remainingMins} 分钟)`);
             return;
         }
 
