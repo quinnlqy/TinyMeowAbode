@@ -24,7 +24,7 @@ import { initPostProcessing, resizePostProcessing } from './rendering/PostProces
 import { playBounce, playToyAnim, spawnFloatingText, showEmoteBubble } from './utils/AnimationUtils.js';
 import { InputManager } from './input/InputManager.js';
 
-setTimeout(() => { const ls = document.getElementById('loading-screen'); if (ls && ls.style.display !== 'none') document.getElementById('force-start-btn').style.display = 'block'; }, 5000);
+// (已移除强制进入按钮的自动显示逻辑)
 // === WeatherSystem/SkyShader/AuroraShader 已迁移到 ./systems/WeatherSystem.js ===
 
 // === 1. 全局配置与变量 ===

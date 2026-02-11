@@ -88,16 +88,46 @@ export class GameSaveManager {
         }
     }
 
-    // [新增] 导出存档为 JSON 字符串
+    // [新增] 导出存档为 JSON 字符串（含日记数据）
     exportSave() {
-        return localStorage.getItem(this.saveKey) || '';
+        const gameSave = localStorage.getItem(this.saveKey) || '{}';
+        const diarySave = localStorage.getItem('cat_game_diary_v1') || '{}';
+        const dailyRewardDate = localStorage.getItem('daily_reward_date') || '';
+        const lastLoginTime = localStorage.getItem('last_login_time') || '';
+
+        const fullSave = {
+            game: JSON.parse(gameSave),
+            diary: JSON.parse(diarySave),
+            dailyRewardDate: dailyRewardDate,
+            lastLoginTime: lastLoginTime
+        };
+        return JSON.stringify(fullSave);
     }
 
-    // [新增] 从 JSON 字符串导入存档
+    // [新增] 从 JSON 字符串导入存档（含日记数据）
     importSave(jsonString) {
         try {
-            JSON.parse(jsonString); // 验证格式
-            localStorage.setItem(this.saveKey, jsonString);
+            const parsed = JSON.parse(jsonString);
+
+            // 兼容新格式（含 diary）和旧格式（仅 game）
+            if (parsed.game && typeof parsed.game === 'object') {
+                // 新格式：包含 game + diary
+                localStorage.setItem(this.saveKey, JSON.stringify(parsed.game));
+
+                if (parsed.diary && typeof parsed.diary === 'object') {
+                    localStorage.setItem('cat_game_diary_v1', JSON.stringify(parsed.diary));
+                    console.log('[Import] 日记数据已恢复');
+                }
+                if (parsed.dailyRewardDate) {
+                    localStorage.setItem('daily_reward_date', parsed.dailyRewardDate);
+                }
+                if (parsed.lastLoginTime) {
+                    localStorage.setItem('last_login_time', parsed.lastLoginTime);
+                }
+            } else {
+                // 旧格式：整个 JSON 就是 game save
+                localStorage.setItem(this.saveKey, jsonString);
+            }
             return true;
         } catch (e) {
             console.error("Invalid save data", e);
