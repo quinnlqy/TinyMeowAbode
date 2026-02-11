@@ -143,6 +143,7 @@ export const FURNITURE_DB = [
     // 装饰类型 - 墙壁
     { id: 'wall_pink', type: 'decor', name: '温馨粉墙', price: 50, color: 0xc9a2a6, decorType: 'wall' },
     { id: 'wall_blue', type: 'decor', name: '清爽蓝墙', price: 50, color: 0xb3e5fc, decorType: 'wall' },
+    { id: 'wall_red', type: 'decor', name: '福气红墙', price: 50, color: 0x942c24, decorType: 'wall' },
     { id: 'wall_blueWooden', type: 'decor', name: '蓝色木墙', price: 50, color: 0xc9a2a6, decorType: 'wall', textureFile: 'BlueWooden.jpg' },
     { id: 'MintWallpaper', type: 'decor', name: '薄荷墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall', textureFile: 'MintWallpaper.jpg' },
     { id: 'CatFishWallpaper', type: 'decor', name: '猫咪墙纸', price: 50, color: 0xc9a2a6, decorType: 'wall', textureFile: 'CatFishWallpaper.png', wallpaperUnitWidth: 1 },
