@@ -247,6 +247,10 @@
         /* iPhone 灵动岛/刘海屏安全区域支持 */
         top: max(50px, env(safe-area-inset-top, 50px)) !important;
         right: 5px !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 8px !important;
+        flex-direction: row !important;
     }
 
     .debug-btn {
@@ -260,11 +264,21 @@
         display: none !important;
     }
 
-    /* 只显示保存按钮（倒数第3个）、读取按钮（倒数第2个）和说明按钮（倒数第1个）*/
-    #debug-panel .debug-btn:nth-child(11),
-    #debug-panel .debug-btn:nth-child(12),
-    #debug-panel .debug-btn:nth-child(13) {
+    /* 只显示保存按钮、读取按钮、说明按钮和版本号 */
+    #debug-panel #btn-save,
+    #debug-panel #btn-load,
+    #debug-panel #btn-manual,
+    #debug-panel #game-version {
         display: inline-block !important;
+    }
+
+    #game-version {
+        color: rgba(255, 255, 255, 0.9) !important;
+        font-size: 14px !important;
+        font-weight: bold;
+        margin-left: 5px;
+        white-space: nowrap;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
     }
 
     /* ================= Tooltip ================= */

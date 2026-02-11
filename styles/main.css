@@ -1644,15 +1644,25 @@ input[type=range] {
     background: rgba(0, 0, 0, 0.8);
 }
 
-/* 只显示保存和读取按钮 */
+/* 隐藏所有调试按钮（GM按钮由 main.js 动态生成） */
 #debug-panel .debug-btn {
     display: none;
 }
 
-#debug-panel .debug-btn:nth-child(11),
-#debug-panel .debug-btn:nth-child(12),
-#debug-panel .debug-btn:nth-child(13) {
-    display: inline-block;
+/* 只显示保存、读取、说明按钮 */
+#debug-panel #btn-save,
+#debug-panel #btn-load,
+#debug-panel #btn-manual {
+    display: inline-block !important;
+}
+
+#game-version {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    margin-left: 10px;
+    font-weight: bold;
+    align-self: center;
+    white-space: nowrap;
 }
 
 /* 放置提示框 - 跟随鼠标 */

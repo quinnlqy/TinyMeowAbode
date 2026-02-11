@@ -855,10 +855,10 @@ export class Cat {
     }
 
     decayStats(dt) {
-        // 饥饿：100→40 约需 4.8小时 (一天吃5顿)
-        this.stats.hunger -= 0.00347 * dt;
-        // 如厕：100→40 约需 12小时 (一天拉2次)
-        this.stats.toilet -= 0.00139 * dt;
+        // 饥饿：速度翻倍 (100→40 约需 2.4小时)
+        this.stats.hunger -= 0.06 * dt;
+        // 如厕：速度翻倍 (100→40 约需 6小时)
+        this.stats.toilet -= 0.03 * dt;
 
         if (this.stats.hunger < 0) this.stats.hunger = 0;
         if (this.stats.toilet < 0) this.stats.toilet = 0;

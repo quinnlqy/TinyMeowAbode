@@ -1171,7 +1171,11 @@ function renderShopItems(cat) {
             if (item.type === 'decor') {
                 restoreDecorState(item.decorType);
             }
-            Tooltip.hide();
+
+            // [修复] 如果正在放置物品，不要隐藏 Tooltip，否则会丢失操作提示
+            if (mode !== 'placing_new') {
+                Tooltip.hide();
+            }
         };
 
         // 1. 展示台背景 (Shelf) - 仅非装饰类显示台子，或者都显示，看你喜好
@@ -1248,7 +1252,7 @@ window.startNewPlacement = function (id) {
 
     // PC端显示放置提示
     if (!isMobile) {
-        Tooltip.show('💡 旋转：点击鼠标中键 / R键<br>❌ 取消：点击鼠标右键');
+        Tooltip.show('旋转：点击鼠标中键，或者按键盘 R键。<br>取消：点击鼠标右键。');
     }
 
     // === [新增] 移动端专属逻辑 ===
@@ -1540,6 +1544,12 @@ function onDown(e) {
                 if (root.userData.parentClass.isBox) { scene.remove(root); const i = placedFurniture.indexOf(root); if (i > -1) placedFurniture.splice(i, 1); updateMoney(10); spawnHeart(root.position); updateStatusText("回收纸箱+10"); return; }
             }
             longPressTimer = setTimeout(() => selectObj(root, e.clientX, e.clientY), 500);
+        } else {
+            // [新增] 点击空白处，如果菜单打开，则关闭菜单并取消选中
+            // 前提是没点到猫，也没点到家具
+            if (selectedObject) {
+                deselect();
+            }
         }
     }
     if (e.button === 1 && ghostMesh && currentItemData.type !== 'wall') { e.preventDefault(); rotateItem(); return; }
@@ -1655,8 +1665,12 @@ function startMovingOld(m) {
 
     // 3. 创建主体的虚影
     createGhost();
-    createGhost();
     updateStatusText("正在移动...");
+
+    // [新增] 显示操作提示
+    if (!isMobile) {
+        Tooltip.show('旋转：点击鼠标中键，或者按键盘 R键。<br>取消：点击鼠标右键。');
+    }
 
     // === [修复] 移动端：显示操作栏 ===
     if (isMobile) {
