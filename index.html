@@ -275,6 +275,32 @@
         </div>
     </div>
 
+    <!-- [新增] 画质设置面板 -->
+    <div id="graphics-settings-panel" class="hidden">
+        <div class="gfx-panel-title">画质设置</div>
+        <div class="gfx-row">
+            <span class="gfx-label">阴影</span>
+            <button id="gfx-toggle-shadow" class="gfx-toggle" onclick="toggleGraphicsSetting('shadow')">开</button>
+        </div>
+        <div class="gfx-row">
+            <span class="gfx-label">辉光 (Bloom)</span>
+            <button id="gfx-toggle-bloom" class="gfx-toggle" onclick="toggleGraphicsSetting('bloom')">开</button>
+        </div>
+        <div class="gfx-row">
+            <span class="gfx-label">环境光遮蔽 (SSAO)</span>
+            <button id="gfx-toggle-ssao" class="gfx-toggle" onclick="toggleGraphicsSetting('ssao')">开</button>
+        </div>
+        <div class="gfx-row">
+            <span class="gfx-label">移轴模糊</span>
+            <button id="gfx-toggle-tiltShift" class="gfx-toggle" onclick="toggleGraphicsSetting('tiltShift')">开</button>
+        </div>
+        <div class="gfx-row">
+            <span class="gfx-label">抗锯齿 (SMAA)</span>
+            <button id="gfx-toggle-smaa" class="gfx-toggle" onclick="toggleGraphicsSetting('smaa')">开</button>
+        </div>
+        <div class="gfx-hint">开启更多效果画面更好，但可能影响性能</div>
+    </div>
+
     <!-- [新增] 移动端专属操作栏（编辑模式时显示） -->
     <div id="mobile-controls">
         <button id="btn-mobile-cancel" class="mobile-ctrl-btn">❌</button>
@@ -353,6 +379,7 @@
         <button class="debug-btn" id="btn-save" onclick="window.exportSaveToFile()">💾 保存</button>
         <button class="debug-btn" id="btn-load" onclick="window.importSaveFromFile()">📂 读取</button>
         <button class="debug-btn" id="btn-manual" onclick="window.showManual()">📖 说明</button>
+        <button class="debug-btn" id="btn-graphics" onclick="toggleGraphicsPanel()">⚙ 画质</button>
         <span id="game-version"
             style="color: rgba(255,255,255,0.7); font-size: 10px; margin-left: 5px; align-self: center;">V1.3</span>
     </div>

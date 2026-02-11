@@ -85,7 +85,7 @@ function mergeDiaryConfig(target, source) {
 
 loadDiaryExtensions();
 import { CustomTiltShiftShader } from './shaders/TiltShiftShader.js';
-import { initPostProcessing, resizePostProcessing } from './rendering/PostProcessing.js';
+import { initPostProcessing, resizePostProcessing, setPassEnabled, getPassStates } from './rendering/PostProcessing.js';
 import { playBounce, playToyAnim, spawnFloatingText, showEmoteBubble } from './utils/AnimationUtils.js';
 import { InputManager } from './input/InputManager.js';
 
@@ -1089,6 +1089,81 @@ function updateEnvironment(dt) {
 
 // === PostProcessing 已迁移到 ./rendering/PostProcessing.js ===
 let composer;
+
+// === [新增] 画质设置管理 ===
+const GRAPHICS_SETTINGS_KEY = 'cat_game_graphics_v1';
+const DEFAULT_GRAPHICS = {
+    // PC 默认全开，手机默认只开 bloom
+    ssao: !isMobile,
+    bloom: true,
+    tiltShift: !isMobile,
+    smaa: !isMobile,
+    shadow: true,
+};
+
+function loadGraphicsSettings() {
+    try {
+        const json = localStorage.getItem(GRAPHICS_SETTINGS_KEY);
+        if (json) {
+            const saved = JSON.parse(json);
+            return { ...DEFAULT_GRAPHICS, ...saved };
+        }
+    } catch (e) { console.warn('[画质设置] 读取失败', e); }
+    return { ...DEFAULT_GRAPHICS };
+}
+
+function saveGraphicsSettings(settings) {
+    try {
+        localStorage.setItem(GRAPHICS_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) { console.warn('[画质设置] 保存失败', e); }
+}
+
+// 切换某个后处理效果
+function toggleGraphicsSetting(name) {
+    const settings = loadGraphicsSettings();
+    settings[name] = !settings[name];
+    saveGraphicsSettings(settings);
+
+    if (name === 'shadow') {
+        renderer.shadowMap.enabled = settings[name];
+        // 需要刷新所有材质的 shadow 状态
+        scene.traverse(obj => { if (obj.material) obj.material.needsUpdate = true; });
+    } else {
+        setPassEnabled(name, settings[name]);
+    }
+
+    updateSettingsUI();
+    console.log(`[画质设置] ${name} → ${settings[name] ? '开' : '关'}`);
+}
+
+// 更新设置面板 UI 状态
+function updateSettingsUI() {
+    const settings = loadGraphicsSettings();
+    const items = ['ssao', 'bloom', 'tiltShift', 'smaa', 'shadow'];
+    items.forEach(key => {
+        const toggle = document.getElementById(`gfx-toggle-${key}`);
+        if (toggle) {
+            toggle.classList.toggle('active', !!settings[key]);
+            toggle.textContent = settings[key] ? '开' : '关';
+        }
+    });
+}
+
+// 切换设置面板显示
+window.toggleGraphicsPanel = function () {
+    const panel = document.getElementById('graphics-settings-panel');
+    if (!panel) return;
+    const isHidden = panel.classList.contains('hidden');
+    if (isHidden) {
+        updateSettingsUI();
+        panel.classList.remove('hidden');
+    } else {
+        panel.classList.add('hidden');
+    }
+};
+
+// 暴露给 HTML onclick
+window.toggleGraphicsSetting = toggleGraphicsSetting;
 
 
 
@@ -2670,8 +2745,8 @@ function startGame() {
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2)); // [优化] 手机端降低像素比，减少渲染量
 
-        renderer.shadowMap.enabled = !isMobile; // [优化] 手机端彻底关闭阴影，省掉整个 shadow pass
-        // [优化] 手机端使用 PCFShadowMap（单次采样），比 PCFSoftShadowMap（多次采样）开销低很多
+        renderer.shadowMap.enabled = true; // 初始先开启，后面由 graphicsSettings 覆盖
+        // [优化] 手机端使用 PCFShadowMap（单次采样），比 PCFSoftShadowMap（多次采样）开销低
         renderer.shadowMap.type = isMobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 
         // 3. 色彩空间与色调映射 (关键！)
@@ -3277,11 +3352,11 @@ function startGame() {
             };
         }
 
-        // === [新增] 在 startGame 底部调用后期处理初始化 ===
-        // [优化] 手机端跳过 EffectComposer，省掉全屏 RenderTarget 的显存开销
-        if (!isMobile) {
-            composer = initPostProcessing(renderer, scene, camera);
-        }
+        // === [改造] 后期处理初始化：PC/手机都创建，通过设置面板控制开关 ===
+        const graphicsSettings = loadGraphicsSettings();
+        composer = initPostProcessing(renderer, scene, camera, graphicsSettings);
+        // 阴影也受设置控制
+        renderer.shadowMap.enabled = graphicsSettings.shadow !== false;
 
         // === [新增] 初始化照片系统 ===
         photoManager.init(renderer, scene, camera, cats);

@@ -1669,10 +1669,11 @@ input[type=range] {
     display: none;
 }
 
-/* 只显示保存、读取、说明按钮 */
+/* 只显示保存、读取、说明、画质按钮 */
 #debug-panel #btn-save,
 #debug-panel #btn-load,
-#debug-panel #btn-manual {
+#debug-panel #btn-manual,
+#debug-panel #btn-graphics {
     display: inline-block !important;
 }
 
@@ -1821,4 +1822,80 @@ input[type=range] {
     50% {
         transform: translate(-50%, -95%);
     }
+}
+
+/* ================= 画质设置面板 ================= */
+#graphics-settings-panel {
+    position: absolute;
+    top: 50px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.96);
+    border-radius: 16px;
+    padding: 16px 20px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    z-index: 10000;
+    width: 220px;
+    font-family: 'Microsoft YaHei', sans-serif;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+#graphics-settings-panel.hidden {
+    display: none;
+}
+
+.gfx-panel-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    text-align: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #f0e6d3;
+}
+
+.gfx-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+}
+
+.gfx-label {
+    font-size: 13px;
+    color: #555;
+}
+
+.gfx-toggle {
+    width: 42px;
+    height: 26px;
+    border-radius: 13px;
+    border: 2px solid #ddd;
+    background: #ccc;
+    color: #999;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gfx-toggle.active {
+    background: #ffaa00;
+    border-color: #e69900;
+    color: white;
+}
+
+.gfx-toggle:active {
+    transform: scale(0.92);
+}
+
+.gfx-hint {
+    font-size: 11px;
+    color: #aaa;
+    text-align: center;
+    margin-top: 10px;
+    line-height: 1.4;
 }
