@@ -186,11 +186,11 @@ let inputManager = null;
 // === [新增] 移动端检测 ===
 const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-// === [优化] 手机端贴图降采样（模拟 mip 偏移 1 级） ===
-// 将贴图缩小到 1/2 分辨率再上传 GPU，显存节省约 75%
+// === [优化] 手机端贴图降采样（限制最大分辨率） ===
+// 将超过 maxSize 的贴图等比缩小，节省 GPU 显存
 const _downsampleCanvas = document.createElement('canvas');
 const _downsampleCtx = _downsampleCanvas.getContext('2d');
-function downsampleTexture(texture, levels = 1) {
+function downsampleTexture(texture, maxSize = 128) {
     if (!isMobile || !texture || !texture.image) return;
     // [修复] 防止重复降采样（clone 共享贴图引用，sanitizeMaterial 会被多次调用）
     if (texture._downsampled) return;
@@ -200,11 +200,12 @@ function downsampleTexture(texture, levels = 1) {
     const srcW = img.width || img.naturalWidth;
     const srcH = img.height || img.naturalHeight;
     if (!srcW || !srcH) return;
-    // 只对大于 256 的贴图降采样
-    if (srcW <= 256 && srcH <= 256) return;
-    const divisor = 1 << levels; // levels=1 → 除以2
-    const newW = Math.max(4, srcW / divisor);
-    const newH = Math.max(4, srcH / divisor);
+    // 已经在限制内，跳过
+    if (srcW <= maxSize && srcH <= maxSize) return;
+    // 等比缩放，长边不超过 maxSize
+    const scale = maxSize / Math.max(srcW, srcH);
+    const newW = Math.max(4, Math.round(srcW * scale));
+    const newH = Math.max(4, Math.round(srcH * scale));
     _downsampleCanvas.width = newW;
     _downsampleCanvas.height = newH;
     _downsampleCtx.drawImage(img, 0, 0, newW, newH);
@@ -428,8 +429,8 @@ function sanitizeMaterial(child) {
 
         if (child.material.map) {
             child.material.map.colorSpace = THREE.SRGBColorSpace;
-            // [优化] 手机端贴图降采样：跳过最大 mip 级别，显存省 75%
-            downsampleTexture(child.material.map);
+            // [优化] 手机端贴图降采样：限制最大 128px
+            downsampleTexture(child.material.map, 128);
         }
 
         // 特殊处理玻璃/窗户
@@ -706,8 +707,8 @@ function applyDecorVisuals(item) {
                     }
                 }
 
-                // [优化] 手机端降采样墙纸/地板贴图
-                downsampleTexture(tex);
+                // [优化] 手机端降采样墙纸/地板贴图（最大128px）
+                downsampleTexture(tex, 128);
 
                 mesh.material.map = tex;
                 mesh.material.color.setHex(0xffffff);
