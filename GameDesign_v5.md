@@ -1,4 +1,4 @@
-# 猫咪的家 (Tiny Meow Abode) - 游戏策划文档 v5.0 (Final)
+# 方寸喵居 (Tiny Meow Abode) - 游戏策划文档 v5.0 (Final)
 
 ## 1. 游戏概述
 **核心玩法**：放置类 / 模拟经营 / 装修

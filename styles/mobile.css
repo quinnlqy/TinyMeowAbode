@@ -260,9 +260,10 @@
         display: none !important;
     }
 
-    /* 只显示保存按钮（倒数第3个）和读取按钮（倒数第2个）*/
+    /* 只显示保存按钮（倒数第3个）、读取按钮（倒数第2个）和说明按钮（倒数第1个）*/
     #debug-panel .debug-btn:nth-child(11),
-    #debug-panel .debug-btn:nth-child(12) {
+    #debug-panel .debug-btn:nth-child(12),
+    #debug-panel .debug-btn:nth-child(13) {
         display: inline-block !important;
     }
 

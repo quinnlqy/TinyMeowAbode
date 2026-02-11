@@ -11,9 +11,13 @@ export class InputManager {
         this.camera = camera;
         this.controls = controls;
 
+        this.controls = controls;
+
         // 输入状态
         this.pointer = new THREE.Vector2();
         this.startPointer = { x: 0, y: 0 };
+        this.lastTapTime = 0;
+        this.tapCount = 0;
         this.raycaster = new THREE.Raycaster();
         this.moveKeys = { w: false, a: false, s: false, d: false };
 
@@ -27,7 +31,10 @@ export class InputManager {
             onPointerUp: null,
             onPointerMove: null,
             onRightClick: null,
-            onRotateKey: null
+            onPointerMove: null,
+            onRightClick: null,
+            onRotateKey: null,
+            onCameraReset: null
         };
 
         this._bound = false;
@@ -117,6 +124,23 @@ export class InputManager {
         if (this.callbacks.onPointerDown) {
             this.callbacks.onPointerDown(e, this.raycaster, this.pointer);
         }
+
+        // [新增] 三击检测 (Triple Tap)
+        const now = Date.now();
+        if (now - this.lastTapTime < 300) {
+            this.tapCount++;
+        } else {
+            this.tapCount = 1;
+        }
+        this.lastTapTime = now;
+
+        if (this.tapCount === 3) {
+            console.log("[Input] Triple tap detected");
+            if (this.callbacks.onCameraReset) {
+                this.callbacks.onCameraReset();
+            }
+            this.tapCount = 0;
+        }
     }
 
     /**
@@ -156,6 +180,15 @@ export class InputManager {
         if (key === 'r') {
             if (this.callbacks.onRotateKey) {
                 this.callbacks.onRotateKey();
+            }
+            return;
+            return;
+        }
+
+        // H 键复位视角
+        if (key === 'h') {
+            if (this.callbacks.onCameraReset) {
+                this.callbacks.onCameraReset();
             }
             return;
         }

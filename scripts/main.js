@@ -89,6 +89,35 @@ let draggingCat = null;
 
 // === FURNITURE_DB 已迁移到 ./data/FurnitureDB.js ===
 
+// === [新增] 全局 Tooltip 管理 ===
+const Tooltip = {
+    el: null,
+    init() {
+        this.el = document.getElementById('global-tooltip');
+        // 全局鼠标移动监听 (不依赖 raycaster，确保覆盖所有 UI)
+        window.addEventListener('mousemove', (e) => {
+            if (this.el && this.el.style.display !== 'none') {
+                // 偏移 15px 防止遮挡鼠标
+                this.el.style.left = (e.clientX + 15) + 'px';
+                this.el.style.top = (e.clientY + 15) + 'px';
+            }
+        });
+    },
+    show(html) {
+        if (isMobile) return; // 手机端不显示鼠标提示
+        if (!this.el) this.el = document.getElementById('global-tooltip');
+        if (!this.el) return;
+
+        this.el.innerHTML = html;
+        this.el.style.display = 'block';
+    },
+    hide() {
+        if (!this.el) this.el = document.getElementById('global-tooltip');
+        if (!this.el) return;
+        this.el.style.display = 'none';
+    }
+};
+
 // === 3. 辅助函数 ===
 function setDomText(id, text) { const el = document.getElementById(id); if (el) el.innerText = text; else console.warn(`Element #${id} not found`); }
 window.closeDialog = function () { document.getElementById('confirm-dialog').style.display = 'none'; pendingInteraction = null; }
@@ -1125,78 +1154,24 @@ function renderShopItems(cat) {
             card.onmouseleave = () => restoreDecorState(item.decorType);
         }
 
-        // === 鼠标悬浮显示家具名称 ===
+        // === 鼠标悬浮显示家具名称 (使用全局Tooltip) ===
+        const hintText = isMobile ? '' : '<br><span style="font-size:10px;opacity:0.8; color:#ffd700;">✨ 点击选择家具摆放</span>';
         card.onmouseenter = function (e) {
             // 如果是装修类，先执行预览
             if (item.type === 'decor') {
                 applyDecorVisuals(item);
             }
-
-            // 创建或更新tooltip（木质背景风格，固定在家具上方）
-            let tooltip = document.getElementById('furniture-tooltip');
-            if (!tooltip) {
-                tooltip = document.createElement('div');
-                tooltip.id = 'furniture-tooltip';
-                tooltip.style.cssText = `
-                            position: fixed;
-                            background: url('./assets/ui/furniture_name_bg.png') no-repeat center/contain;
-                            color: #5d4037;
-                            width: 120px;
-                            height: 32px;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 12px;
-                            font-weight: 600;
-                            font-family: 'Microsoft YaHei', 'Kalam', sans-serif;
-                            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
-                            pointer-events: none;
-                            z-index: 10000;
-                            white-space: nowrap;
-                            overflow: hidden;
-                            text-overflow: ellipsis;
-                            padding-bottom: 6px;
-                        `;
-                document.body.appendChild(tooltip);
-            }
-            tooltip.textContent = item.name;
-            tooltip.style.display = 'flex';
-
-            // 计算tooltip位置（固定在卡片上方中央）
-            const updateTooltipPosition = () => {
-                const rect = card.getBoundingClientRect();
-                tooltip.style.left = (rect.left + rect.width / 2 - 60) + 'px'; // 60是tooltip宽度的一半
-                tooltip.style.top = (rect.top - 40) + 'px'; // 在卡片上方40px
-            };
-            updateTooltipPosition();
-
-            // 监听滚动事件以更新位置
-            const scrollContainer = document.getElementById('items-scroll');
-            const scrollHandler = updateTooltipPosition;
-            scrollContainer.addEventListener('scroll', scrollHandler);
-
-            // 保存scrollHandler以便后续移除
-            card._tooltipScrollHandler = scrollHandler
+            // 显示全局提示
+            Tooltip.show(`📦 ${item.name}${hintText}`);
         };
 
+        // 鼠标移出隐藏
         card.onmouseleave = function () {
             // 如果是装修类，恢复状态
             if (item.type === 'decor') {
                 restoreDecorState(item.decorType);
             }
-
-            // 隐藏tooltip
-            const tooltip = document.getElementById('furniture-tooltip');
-            if (tooltip) {
-                tooltip.style.display = 'none';
-            }
-
-            // 移除滚动监听
-            const scrollContainer = document.getElementById('items-scroll');
-            if (card._tooltipScrollHandler) {
-                scrollContainer.removeEventListener('scroll', card._tooltipScrollHandler);
-                card._tooltipScrollHandler = null;
-            }
+            Tooltip.hide();
         };
 
         // 1. 展示台背景 (Shelf) - 仅非装饰类显示台子，或者都显示，看你喜好
@@ -1270,6 +1245,11 @@ window.startNewPlacement = function (id) {
     createGhost();
     updateStatusText("放置: " + item.name);
     document.querySelectorAll('.item-btn').forEach(b => b.classList.remove('selected'));
+
+    // PC端显示放置提示
+    if (!isMobile) {
+        Tooltip.show('💡 旋转：点击鼠标中键 / R键<br>❌ 取消：点击鼠标右键');
+    }
 
     // === [新增] 移动端专属逻辑 ===
     if (isMobile) {
@@ -1381,6 +1361,10 @@ function confirmPlace() {
             return;
         }
     }
+
+    // 隐藏放置提示并移除监听
+    // 隐藏放置提示
+    Tooltip.hide();
 
     let m = ghostMesh.clone();
     m.traverse(c => {
@@ -1596,6 +1580,14 @@ function cancelPlace() {
     ghostMesh = null;
     currentItemData = null;
     updateStatusText("浏览中");
+
+    // 隐藏放置提示并移除监听
+    const hint = document.getElementById('placement-hint');
+    if (hint) hint.style.display = 'none';
+    if (window._placementHintMoveHandler) {
+        window.removeEventListener('mousemove', window._placementHintMoveHandler);
+        window._placementHintMoveHandler = null;
+    }
 
     // === [新增] 移动端：隐藏操作栏并恢复底部UI ===
     if (isMobile) {
@@ -1865,6 +1857,51 @@ function onMove(e) {
                 }
             }
         }
+    }
+    // === [新增] 3D 对象悬浮提示 (仅在空闲状态且非移动端) ===
+    if (mode === 'idle' && !isMobile && !draggingCat && !ghostMesh) {
+        // UI 遮挡检测：如果在 Canvas 之外（InputManager传递的e.target），则不射线检测
+        // 但是 InputManager.onPointerMove 传递的 e.target 可能是 Canvas 上方的 DIV
+        // 所以检查 e.target.tagName
+        if (e.target && e.target.tagName !== 'CANVAS') {
+            // 鼠标在 UI 上，不显示 3D 提示 (但 Tooltip 可能由 UI 触发显示，所以不 hide)
+            return;
+        }
+
+        raycaster.setFromCamera(pointer, camera);
+
+        // 1. 检测猫咪
+        const hitCats = raycaster.intersectObjects(cats.map(c => c.mesh), true);
+        if (hitCats.length > 0) {
+            Tooltip.show('🐈 抚摸猫咪');
+            return;
+        }
+
+        // 2. 检测功能家具
+        const hitFurn = raycaster.intersectObjects(placedFurniture, true);
+        if (hitFurn.length > 0) {
+            // 向上查找 parentGroup
+            let obj = hitFurn[0].object;
+            while (obj && !obj.userData.parentClass) {
+                obj = obj.parent;
+                if (!obj) break;
+            }
+
+            if (obj && obj.userData.parentClass) {
+                const furn = obj.userData.parentClass;
+                // 检查功能
+                if (furn.dbItem.id === 'FoodBowl_Empty') {
+                    Tooltip.show('🥣 点击添加猫粮 (-10❤)');
+                    return;
+                } else if (furn.dbItem.id === 'LitterBox_Full') {
+                    Tooltip.show('🧹 点击清理猫砂');
+                    return;
+                }
+            }
+        }
+
+        // 如果什么都没扫到，隐藏 Tooltip
+        Tooltip.hide();
     }
 }
 
@@ -2198,9 +2235,28 @@ function startGame() {
             },
             onRotateKey: () => {
                 if (ghostMesh && currentItemData.type !== 'wall') rotateItem();
+            },
+            onCameraReset: () => {
+                // [新增] 视角复位回调
+                console.log("[Main] Resetting camera view");
+                // 默认位置 (根据 initCamera 中的设置)
+                // const panOffset = -2; // 已经在闭包中有这个变量了
+                const targetPos = new THREE.Vector3(20 + panOffset, 20, 20 + panOffset);
+                const targetLookAt = new THREE.Vector3(panOffset, 0, panOffset);
+
+                // 使用 gsap 动画平滑复位 (这里简单直接设置)
+                camera.position.copy(targetPos);
+                controls.target.copy(targetLookAt);
+                controls.update();
+
+                updateStatusText("视角已复位");
+                audioManager.playSfx('ui_click');
             }
         });
         inputManager.bind();
+
+        // [新增] 初始化全局 Tooltip
+        Tooltip.init();
 
         hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 2.0);
         scene.add(hemiLight);
@@ -2814,6 +2870,59 @@ window.showDebug = function () {
     });
     console.log("配置已启用：调试按钮已显示");
     updateStatusText("Debug模式已开启");
+};
+
+// === [新增] 游戏说明弹窗 ===
+window.showManual = function () {
+    let modal = document.getElementById('manual-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'manual-modal';
+        modal.innerHTML = `
+            <div id="manual-content">
+                <button id="manual-close" onclick="document.getElementById('manual-modal').classList.remove('show')">&times;</button>
+                <h2>📖 方寸喵居 - 玩家操作指南</h2>
+                <h3>💻 电脑端 (PC)</h3>
+                <p><b>视角控制：</b><br>
+                旋转：按住鼠标左键拖动<br>
+                平移：按住鼠标右键拖动，或 W/A/S/D<br>
+                缩放：滚动鼠标滚轮<br>
+                复位：按 H 键回到默认视角</p>
+                <p><b>家具互动：</b><br>
+                放置：从商店点击家具 → 移动鼠标 → 左键放置<br>
+                旋转：点击鼠标中键，或按 R 键<br>
+                取消：点击鼠标右键<br>
+                移动：长按已放置家具 → 选择"移动"<br>
+                删除：选中家具后点击删除按钮</p>
+                <h3>📱 手机端 (Mobile)</h3>
+                <p><b>视角控制：</b><br>
+                旋转：单指拖动空白处<br>
+                平移：双指同时拖动<br>
+                缩放：双指捏合/张开<br>
+                复位：点击屏幕 3 次回到默认视角</p>
+                <p><b>家具互动：</b><br>
+                放置：从商店拖拽家具到场景<br>
+                旋转：点击旋转按钮<br>
+                移动：长按家具 1 秒进入移动模式</p>
+                <h3>❤️ 赚取爱心</h3>
+                <p>抚摸猫咪 (+1) · 每日登录 (+50) · 猫咪使用家具</p>
+                <h3>🐱 照顾猫咪</h3>
+                <p>饥饿时猫咪会找<b>猫食盆</b>（点击补充，-10爱心）<br>
+                如厕时猫咪会找<b>猫砂盆</b>（点击清理）</p>
+                <h3>🏠 装修指南</h3>
+                <p>商店在屏幕下方，分类：家具、小物、墙面家具、墙纸、地板、地毯<br>
+                猫食盆和猫砂盆在<b>小物</b>分页</p>
+                <h3>💾 存档</h3>
+                <p>保存：点击右上"💾 保存"下载 .json 文件<br>
+                读取：点击"📂 读取"导入文件<br>
+                手机电脑可通过存档文件互传进度</p>
+            </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('show');
+        });
+    }
+    modal.classList.add('show');
 };
 
 init();
