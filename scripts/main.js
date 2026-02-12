@@ -101,7 +101,7 @@ window.GAME_VERSION = "v1.3";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
-window.showCrashLog = function() {
+window.showCrashLog = function () {
     const logs = typeof window._getCrashLogs === 'function' ? window._getCrashLogs() : [];
     if (logs.length === 0) {
         alert('没有崩溃日志记录。');
@@ -143,6 +143,16 @@ if (verEl) verEl.innerText = window.GAME_VERSION;
 // 同步右上角版本号
 const gameVerEl = document.getElementById('game-version');
 if (gameVerEl) gameVerEl.innerText = window.GAME_VERSION;
+
+// [新增] 音频调试指令
+window.debugPlayAudio = function (key) {
+    if (audioManager) {
+        console.log(`[Audio Debug] Playing: ${key}`);
+        audioManager.playSfx(key);
+    } else {
+        console.error('[Audio Debug] AudioManager not found');
+    }
+};
 
 let weatherSystem; // 全局变量
 
@@ -3227,88 +3237,88 @@ function startGame() {
                     updateNextBtn();
                     // ========== END DEBUG 模式 ==========
                 } else {
-                const furnitureQueue = savedData.furniture.slice();
-                const BATCH_SIZE = 3; // 每批恢复 3 个家具
+                    const furnitureQueue = savedData.furniture.slice();
+                    const BATCH_SIZE = 3; // 每批恢复 3 个家具
 
-                let _restoreIndex = 0; // 当前恢复进度
+                    let _restoreIndex = 0; // 当前恢复进度
 
-                function restoreOneFurniture(fData, idx) {
-                    // [诊断] 在恢复前就写日志，如果崩溃了最后一条日志就是凶手
-                    if (typeof window._logCrash === 'function') {
-                        window._logCrash(`[恢复] #${idx}/${savedData.furniture.length} id=${fData.id} pos=(${fData.pos?.x?.toFixed(1)},${fData.pos?.y?.toFixed(1)},${fData.pos?.z?.toFixed(1)})`);
-                    }
-                    try {
-                        if (fData.id === 'mystery_box') return;
-                        let itemConfig = FURNITURE_DB.find(i => i.id === fData.id);
-                        if (itemConfig) {
-                            const modelGroup = prepareModel(itemConfig);
-                            if (modelGroup) {
-                                modelGroup.position.set(fData.pos.x, fData.pos.y, fData.pos.z);
-                                modelGroup.rotation.set(
-                                    fData.rot.x || 0,
-                                    fData.rot.y || 0,
-                                    fData.rot.z || 0
-                                );
-                                const furnClass = new Furniture(modelGroup, itemConfig, furnitureCallbacks);
-                                if (fData.funcState && furnClass.functionalState) {
-                                    furnClass.functionalState = fData.funcState;
-                                    furnClass.updateVisuals();
+                    function restoreOneFurniture(fData, idx) {
+                        // [诊断] 在恢复前就写日志，如果崩溃了最后一条日志就是凶手
+                        if (typeof window._logCrash === 'function') {
+                            window._logCrash(`[恢复] #${idx}/${savedData.furniture.length} id=${fData.id} pos=(${fData.pos?.x?.toFixed(1)},${fData.pos?.y?.toFixed(1)},${fData.pos?.z?.toFixed(1)})`);
+                        }
+                        try {
+                            if (fData.id === 'mystery_box') return;
+                            let itemConfig = FURNITURE_DB.find(i => i.id === fData.id);
+                            if (itemConfig) {
+                                const modelGroup = prepareModel(itemConfig);
+                                if (modelGroup) {
+                                    modelGroup.position.set(fData.pos.x, fData.pos.y, fData.pos.z);
+                                    modelGroup.rotation.set(
+                                        fData.rot.x || 0,
+                                        fData.rot.y || 0,
+                                        fData.rot.z || 0
+                                    );
+                                    const furnClass = new Furniture(modelGroup, itemConfig, furnitureCallbacks);
+                                    if (fData.funcState && furnClass.functionalState) {
+                                        furnClass.functionalState = fData.funcState;
+                                        furnClass.updateVisuals();
+                                    }
+                                    if (itemConfig.light) {
+                                        addFurnitureLight(itemConfig, modelGroup);
+                                    }
+                                    // [修复] 限制投射阴影的家具数量
+                                    applyFurnitureShadow(modelGroup, itemConfig.id);
+                                    if (itemConfig.layer === 0 && Math.abs(modelGroup.position.y) < 0.01) {
+                                        modelGroup.position.y = 0.02;
+                                    }
+                                    scene.add(modelGroup);
+                                    placedFurniture.push(modelGroup);
+                                } else {
+                                    console.warn(`[存档恢复] 模型未加载，保留原始数据: ${fData.id}`);
+                                    unrestoredFurniture.push(fData);
                                 }
-                                if (itemConfig.light) {
-                                    addFurnitureLight(itemConfig, modelGroup);
-                                }
-                                // [修复] 限制投射阴影的家具数量
-                                applyFurnitureShadow(modelGroup, itemConfig.id);
-                                if (itemConfig.layer === 0 && Math.abs(modelGroup.position.y) < 0.01) {
-                                    modelGroup.position.y = 0.02;
-                                }
-                                scene.add(modelGroup);
-                                placedFurniture.push(modelGroup);
                             } else {
-                                console.warn(`[存档恢复] 模型未加载，保留原始数据: ${fData.id}`);
+                                console.warn(`[存档恢复] 未知家具ID，保留原始数据: ${fData.id}`);
                                 unrestoredFurniture.push(fData);
                             }
-                        } else {
-                            console.warn(`[存档恢复] 未知家具ID，保留原始数据: ${fData.id}`);
+                        } catch (err) {
+                            console.warn(`[存档恢复] 跳过家具 ${fData.id}:`, err.message);
+                            if (typeof window._logCrash === 'function') {
+                                window._logCrash(`[恢复失败] #${idx} id=${fData.id}: ${err.message}`);
+                            }
                             unrestoredFurniture.push(fData);
                         }
-                    } catch (err) {
-                        console.warn(`[存档恢复] 跳过家具 ${fData.id}:`, err.message);
-                        if (typeof window._logCrash === 'function') {
-                            window._logCrash(`[恢复失败] #${idx} id=${fData.id}: ${err.message}`);
-                        }
-                        unrestoredFurniture.push(fData);
                     }
-                }
 
-                function restoreBatch() {
-                    // [诊断] 每批开始前记录进度
-                    if (typeof window._logCrash === 'function') {
-                        window._logCrash(`[批次] 开始恢复 #${_restoreIndex}~${Math.min(_restoreIndex + BATCH_SIZE, savedData.furniture.length) - 1}, 已完成=${placedFurniture.length}`);
-                    }
-                    const batch = furnitureQueue.splice(0, BATCH_SIZE);
-                    batch.forEach(fData => {
-                        restoreOneFurniture(fData, _restoreIndex);
-                        _restoreIndex++;
-                    });
-                    if (furnitureQueue.length > 0) {
-                        updateStatusText(`正在恢复家具... (${placedFurniture.length}/${savedData.furniture.length})`);
-                        setTimeout(restoreBatch, 50);
-                    } else {
-                        if (unrestoredFurniture.length > 0) {
-                            console.warn(`[存档恢复] ${unrestoredFurniture.length} 个家具未能恢复，已保留原始数据防止丢失`);
-                        }
-                        updateStatusText(`存档恢复完成！共 ${placedFurniture.length} 个家具`);
-                        console.log(`[存档恢复] 完成: ${placedFurniture.length} 成功, ${unrestoredFurniture.length} 未恢复, 阴影灯光: ${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS}, 阴影投射: ${_shadowCasterCount}/${MAX_SHADOW_CASTERS}`);
-                        window._placedFurnitureCount = placedFurniture.length;
-                        window._unrestoredCount = unrestoredFurniture.length;
+                    function restoreBatch() {
+                        // [诊断] 每批开始前记录进度
                         if (typeof window._logCrash === 'function') {
-                            window._logCrash(`[恢复完成] 成功=${placedFurniture.length}, 失败=${unrestoredFurniture.length}, 阴影灯光=${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS}, 阴影投射=${_shadowCasterCount}/${MAX_SHADOW_CASTERS}`);
+                            window._logCrash(`[批次] 开始恢复 #${_restoreIndex}~${Math.min(_restoreIndex + BATCH_SIZE, savedData.furniture.length) - 1}, 已完成=${placedFurniture.length}`);
+                        }
+                        const batch = furnitureQueue.splice(0, BATCH_SIZE);
+                        batch.forEach(fData => {
+                            restoreOneFurniture(fData, _restoreIndex);
+                            _restoreIndex++;
+                        });
+                        if (furnitureQueue.length > 0) {
+                            updateStatusText(`正在恢复家具... (${placedFurniture.length}/${savedData.furniture.length})`);
+                            setTimeout(restoreBatch, 50);
+                        } else {
+                            if (unrestoredFurniture.length > 0) {
+                                console.warn(`[存档恢复] ${unrestoredFurniture.length} 个家具未能恢复，已保留原始数据防止丢失`);
+                            }
+                            updateStatusText(`存档恢复完成！共 ${placedFurniture.length} 个家具`);
+                            console.log(`[存档恢复] 完成: ${placedFurniture.length} 成功, ${unrestoredFurniture.length} 未恢复, 阴影灯光: ${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS}, 阴影投射: ${_shadowCasterCount}/${MAX_SHADOW_CASTERS}`);
+                            window._placedFurnitureCount = placedFurniture.length;
+                            window._unrestoredCount = unrestoredFurniture.length;
+                            if (typeof window._logCrash === 'function') {
+                                window._logCrash(`[恢复完成] 成功=${placedFurniture.length}, 失败=${unrestoredFurniture.length}, 阴影灯光=${_furnitureShadowCount}/${MAX_SHADOW_LIGHTS}, 阴影投射=${_shadowCasterCount}/${MAX_SHADOW_CASTERS}`);
+                            }
                         }
                     }
-                }
 
-                restoreBatch();
+                    restoreBatch();
                 } // end of normal restore (not safeMode, not debug)
             }
         } else {

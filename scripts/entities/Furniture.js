@@ -70,6 +70,13 @@ export class Furniture {
         if (this.isVehicle && this.callbacks.logToScreen) {
             // this.callbacks.logToScreen(`Vehicle initialized: ${dbItem.id}`);
         }
+
+        // [新增] 音频触发冷却 & 激活状态
+        this.audioCooldownTimer = 0;
+        this.isActivated = false; // 默认为未激活
+
+        // [Debug] Check callbacks
+        console.log(`[Furniture] ${dbItem.id} initialized. Audio: ${!!this.callbacks.audioManager}`);
     }
 
     initFunctionalState() {
@@ -200,6 +207,22 @@ export class Furniture {
             });
             return true;
         }
+
+        // [新增] 玩具交互逻辑：点击激活 "等待猫咪" 状态
+        if (this.dbItem.proximityAudio || this.dbItem.isToy) {
+            if (!this.isActivated) {
+                this.isActivated = true;
+                // [修改] 移除了 playSfx 和 playBounce，因为 main.js 中的 onDown 已经处理了通用的玩具音效和动画
+                // [修改] 返回 false 以允许 main.js 继续执行长按检测 (显示移动/删除菜单)
+
+                console.log(`[Furniture] ${this.dbItem.name} 激活，等待猫咪触发...`);
+                return false;
+            } else {
+                // 如果已经激活了，也返回 false 允许长按
+                return false;
+            }
+        }
+
         return false;
     }
 
@@ -252,6 +275,14 @@ export class Furniture {
             this.updateBubblePosition();
         }
 
+        // [新增] 接近触发音频逻辑
+        if (this.dbItem.proximityAudio) {
+            // [修改] 只有激活状态下才检查接近
+            if (this.isActivated) {
+                this.updateProximityAudio(dt);
+            }
+        }
+
         if (!this.isVehicle) return;
 
         // 根据当前阶段执行不同逻辑
@@ -269,6 +300,66 @@ export class Furniture {
             riderPos.y += 0.15;
             this.rider.mesh.position.copy(riderPos);
             this.rider.mesh.rotation.y = this.mesh.rotation.y + Math.PI;
+        }
+    }
+
+    /**
+     * [新增] 更新接近音频触发逻辑
+     */
+    updateProximityAudio(dt) {
+        if (!GameContext.cats || GameContext.cats.length === 0) return;
+
+        // 冷却时间处理
+        if (this.audioCooldownTimer > 0) {
+            this.audioCooldownTimer -= dt;
+            // [Debug] 如果还在冷却中，偶尔打个日志
+            // if (Math.random() < 0.01) console.log(`[Furniture Debug] Cooldown: ${this.audioCooldownTimer.toFixed(2)}`);
+            return;
+        }
+
+        const cat = GameContext.cats[0];
+        if (!cat || !cat.mesh) {
+            console.warn('[Furniture Debug] Cat mesh missing!');
+            return;
+        }
+
+        const dist = this.mesh.position.distanceTo(cat.mesh.position);
+
+        // [Debug] 每1秒只打印一次
+        if (!this._lastDebugTime || Date.now() - this._lastDebugTime > 1000) {
+            this._lastDebugTime = Date.now();
+            console.log(`[Furniture Debug] ${this.dbItem.name} dist: ${dist.toFixed(2)}, catPos: (${cat.mesh.position.x.toFixed(1)}, ${cat.mesh.position.z.toFixed(1)})`);
+        }
+
+        // 触发距离 1.5 米
+        if (dist < 1.5) {
+            // 播放音频
+            if (this.callbacks.audioManager) {
+                this.callbacks.audioManager.playSfx(this.dbItem.proximityAudio);
+                console.log(`[Furniture] ${this.dbItem.name} 触发接近语音: ${this.dbItem.proximityAudio}`);
+            }
+
+            // [修改] 移除气泡显示 (用户要求只要声音)
+            // this.showBubble("真棒！");
+            // setTimeout(() => this.hideBubble(), 2000);
+
+            // [新增] 触发后重置激活状态 (一次性触发)
+            this.isActivated = false;
+            console.log(`[Furniture] ${this.dbItem.name} 触发完毕，恢复待机状态`);
+
+            // 触发猫咪反应 (看向)
+            if (cat.reactToSound) {
+                // 避免打断正在进行的交互
+                if (cat.state === 'idle' || cat.state === 'walking') {
+                    cat.mesh.lookAt(this.mesh.position.x, cat.mesh.position.y, this.mesh.position.z);
+                    if (this.callbacks.showEmote) {
+                        this.callbacks.showEmote(cat.mesh.position, '👂');
+                    }
+                }
+            }
+
+            // 重置冷却 (默认 15秒)
+            this.audioCooldownTimer = this.dbItem.audioCooldown || 15;
         }
     }
 

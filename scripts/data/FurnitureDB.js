@@ -58,7 +58,7 @@ export const FURNITURE_DB = [
     { id: 'GreenPlant', type: 'floor', layer: 1, name: '盆栽', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'GreenPlant.glb', modelScale: 1.0, fixBottom: true },
     { id: 'OrangeTree', type: 'floor', layer: 1, name: '橘子盆摘', price: 100, color: 0x8e44ad, size: { x: 1, y: 2, z: 1 }, modelFile: 'OrangeTree.glb', modelScale: 1.5, fixBottom: true },
 
-    { id: 'Television', type: 'floor', layer: 1, name: '电视', price: 100, color: 0x8e44ad, size: { x: 1.9, y: 1.5, z: 0.8 }, modelFile: 'Television.glb', modelScale: 1.0, fixBottom: true },
+    { id: 'Television', type: 'floor', layer: 1, name: '电视', price: 100, color: 0x8e44ad, size: { x: 1.9, y: 1.5, z: 0.8 }, modelFile: 'Television.glb', modelScale: 2.0, fixBottom: true },
     { id: 'table', type: 'floor', layer: 1, isSurface: true, surfaceHeight: 0.8, name: '木桌', price: 60, color: 0x8d6e63, size: { x: 1.5, y: 0.6, z: 1.5 }, modelFile: 'table.glb', modelScale: 1.0, fixBottom: true },
     { id: 'Tabletop', type: 'floor', layer: 1, isSurface: true, name: '绿色小桌', price: 40, color: 0xe67e22, size: { x: 0.8, y: 0.8, z: 0.8 }, modelFile: 'Tabletop.glb', modelScale: 0.5, canSleep: false, fixBottom: true },
     { id: 'FlowerStool', type: 'floor', layer: 1, isSurface: true, name: '小花桌', price: 40, color: 0xe67e22, size: { x: 0.8, y: 0.8, z: 0.8 }, modelFile: 'FlowerStool.glb', modelScale: 0.5, canSleep: false, fixBottom: true },
@@ -93,6 +93,8 @@ export const FURNITURE_DB = [
     { id: 'WovenElegance', type: 'small', layer: 2, name: '竹编包', price: 5, color: 0xffffff, size: { x: 0.3, y: 0.3, z: 0.3 }, modelFile: 'WovenElegance.glb', modelScale: 0.3, fixBottom: true },
 
     { id: 'ToyCarrot', type: 'small', layer: 2, name: '胡萝卜', price: 5, color: 0xffffff, size: { x: 0.3, y: 0.3, z: 0.3 }, modelFile: 'Carrot.glb', modelScale: 0.3, fixBottom: true, isToy: true },
+    { id: 'CrochetedCarrot', type: 'small', layer: 2, name: '编织胡萝卜', price: 25, color: 0xffffff, size: { x: 0.4, y: 0.3, z: 0.4 }, modelFile: 'crochetedcarrot.glb', modelScale: 0.6, fixBottom: true, isToy: true, proximityAudio: 'nicejob', audioCooldown: 0.5 },
+    { id: 'TissueBox', type: 'small', layer: 2, name: '抽纸盒', price: 20, color: 0xffffff, size: { x: 0.4, y: 0.3, z: 0.4 }, modelFile: 'tissuebox.glb', modelScale: 0.6, fixBottom: true, isToy: true, proximityAudio: 'nicejob', audioCooldown: 0.5 },
 
     {
         id: 'ChrismasTree_Small',

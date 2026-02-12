@@ -20,13 +20,14 @@ export class AudioManager {
             'scoop_sand': './assets/audio/scoop_sand.wav',
             'meow_normal': './assets/audio/meow_normal.ogg',
             'meow_happy': './assets/audio/meow_happy.ogg',
-            'meow_purr':   './assets/audio/meow_purr_loop_01.ogg', // 打呼噜
+            'meow_purr': './assets/audio/meow_purr_loop_01.ogg', // 打呼噜
             'meow_angry': './assets/audio/meow_angry.ogg',
             'meow_urgent': './assets/audio/meow_urgent.ogg',
             'toy_squeak': './assets/audio/toy_squeak.wav',
+            'nicejob': './assets/audio/nicejob.mp3',
             'bgm': './assets/audio/bgm.mp3'
         };
-        
+
         this.loadAll();
     }
 
@@ -47,7 +48,7 @@ export class AudioManager {
     // 播放音效 (支持同音效叠加播放)
     playSfx(key) {
         if (this.isMuted || !this.sounds[key]) return;
-        
+
         // 克隆节点以支持连点播放（例如连续点击按钮）
         const sound = this.sounds[key].cloneNode();
         sound.volume = this.sounds[key].volume;
