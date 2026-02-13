@@ -22,6 +22,12 @@ export class GameSaveManager {
         const data = this.getGameData();
         if (!data.cats || !data.cats[0]) return; // 还没初始化好
 
+        // [Fix] Prevent saving while restoration is in progress to avoid data loss
+        if (data.isRestoring) {
+            console.warn("[Save] Skipped: Restoration in progress...");
+            return;
+        }
+
         const saveData = {
             // 1. 基础数据
             heartScore: data.heartScore,
@@ -46,7 +52,7 @@ export class GameSaveManager {
                     isTipped: p.isTipped,
                     boxHeight: p.boxHeight
                 };
-            // [修复] 合并未能恢复的家具原始数据，防止跨设备存档丢失
+                // [修复] 合并未能恢复的家具原始数据，防止跨设备存档丢失
             }).concat(data.unrestoredFurniture || [])
         };
 

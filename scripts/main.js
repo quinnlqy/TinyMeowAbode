@@ -344,6 +344,8 @@ const obstacles = []; const placedFurniture = []; const cats = [];
 let heartScore = 500; let currentCategory = 'furniture'; let activeDecorId = { floor: null, wall: null }; let skyPanels = [];
 // [修复] 记录因模型缺失而未能恢复的家具原始数据，防止自动保存时丢失
 let unrestoredFurniture = [];
+// [Fix] Flag to tracking restoration status
+let isRestoring = false;
 let pendingInteraction = null;
 let draggingCat = null;
 
@@ -1249,7 +1251,7 @@ const furnitureCallbacks = {
 
 const gameSaveManager = new GameSaveManager(
     // 获取游戏数据的回调
-    () => ({ cats, heartScore, activeDecorId, placedFurniture, unrestoredFurniture }),
+    () => ({ cats, heartScore, activeDecorId, placedFurniture, unrestoredFurniture, isRestoring }),
     // 恢复数据的回调
     {
         setHeartScore: (val) => { heartScore = val; setDomText('heart-text-display', heartScore); },
@@ -1640,38 +1642,75 @@ function renderShopItems(cat) {
         shelf.className = 'shelf-bg';
         card.appendChild(shelf);
 
-        // 2. 商品图标 (Icon)
-        // [优化] 优先使用 item.iconFile，否则尝试拼凑 assets/ui/items/icon_{id}.png
-        let iconPath;
-        if (item.iconFile) {
-            iconPath = `./assets/ui/items/${item.iconFile}`;
-        } else {
-            // 默认尝试 .png
-            iconPath = `./assets/ui/items/icon_${item.id}.png`;
-        }
+        // 2. 商品图标 (Icon) - [优化] 避免 Decor 类型报 404 错误
+        const iconContainer = document.createElement('div');
+        iconContainer.className = 'icon-container';
+        // [Fix] Remove vertical centering (align-items: center) and height: 100% which caused icons to float too low/center
+        // Mimic the card's layout: flex column, centered horizontally.
+        // position: absolute to overlay on shelf? No, previously it was just appended.
+        // Wait, previously `iconImg` was appended to `card`. `shelf` was also appended.
+        // `shelf` is position: absolute. `iconImg` is NOT absolute in CSS (width/height defined, z-index defined).
+        // So `iconImg` was part of the flow.
+        // If I make container absolute, I take it OUT of flow. But `shelf` is absolute, so it ignores flow.
+        // But `card` is flex column. `iconImg` WAS taking up space in the column?
+        // Let's check CSS: .item-card { display: flex; flex-direction: column; align-items: center; }
+        // Yes! `iconImg` was a flex item.
+        // So `iconContainer` MUST be a relative/static flex item too, NOT absolute!
+        // If I make it absolute, the card collapses or layout breaks.
+        // But wait, `shelf` is absolute. `tag` (price) is absolute (`bottom: 15px`).
+        // So `iconImg` was likely the ONLY thing taking up space?
+        // No, `card` has explicit height 150px.
+        // So `iconImg` just sits there.
+        // FIX: Remove `position: absolute` from container. Make it width 100%, flex center (horizontal).
+        iconContainer.style.cssText = 'width:100%; display:flex; justify-content:center; z-index:2;';
+        card.appendChild(iconContainer);
 
-        const iconImg = document.createElement('img');
-        iconImg.className = 'item-icon';
-        iconImg.src = iconPath;
-
-        // [备用方案] 图片加载失败时，显示色块
-        iconImg.onerror = function () {
-            this.style.display = 'none'; // 隐藏破图
-            const placeholder = document.createElement('div');
-            placeholder.className = 'item-placeholder';
-
-            // 如果有纹理用纹理，没纹理用颜色
+        // 如果是装饰类且没有指定icon，直接显示材质/颜色预览
+        if (item.type === 'decor' && !item.iconFile) {
+            const preview = document.createElement('div');
+            preview.className = 'item-placeholder';
+            // 复用样式逻辑
             if (item.textureFile) {
-                placeholder.style.backgroundImage = `url(./assets/textures/${item.textureFile})`;
-                placeholder.style.backgroundSize = 'cover';
+                preview.style.backgroundImage = `url(./assets/textures/${item.textureFile})`;
+                preview.style.backgroundSize = 'cover';
             } else {
                 const colorVal = item.color !== undefined ? item.color : 0xcccccc;
-                placeholder.style.background = '#' + colorVal.toString(16).padStart(6, '0');
+                // [Fix] Ensure 6-digit hex
+                preview.style.background = '#' + colorVal.toString(16).padStart(6, '0');
             }
-            card.insertBefore(placeholder, shelf.nextSibling); // 插在台子上面
-        };
+            iconContainer.appendChild(preview);
+        } else {
+            // 其他类型尝试加载图标
+            let iconPath;
+            if (item.iconFile) {
+                iconPath = `./assets/ui/items/${item.iconFile}`;
+            } else {
+                iconPath = `./assets/ui/items/icon_${item.id}.png`;
+            }
 
-        card.appendChild(iconImg);
+            const iconImg = document.createElement('img');
+            iconImg.className = 'item-icon';
+            iconImg.src = iconPath;
+
+            // 图片加载失败时，显示色块
+            iconImg.onerror = function () {
+                this.style.display = 'none'; // 隐藏破图
+                const placeholder = document.createElement('div');
+                placeholder.className = 'item-placeholder';
+
+                if (item.textureFile) {
+                    placeholder.style.backgroundImage = `url(./assets/textures/${item.textureFile})`;
+                    placeholder.style.backgroundSize = 'cover';
+                } else {
+                    const colorVal = item.color !== undefined ? item.color : 0xcccccc;
+                    placeholder.style.background = '#' + colorVal.toString(16).padStart(6, '0');
+                }
+                // Insert into container
+                iconContainer.appendChild(placeholder);
+            };
+
+            iconContainer.appendChild(iconImg);
+        }
 
         // 3. 价格吊牌 (Tag)
         const tag = document.createElement('div');
@@ -2393,6 +2432,12 @@ function onMove(e) {
                     ghostMesh.rotateY(faceRotation);
                 }
 
+                // [New] Snap to floor if configured (e.g. for Door)
+                if (currentItemData.snapToFloor) {
+                    pos.y = currentItemData.size.y / 2;
+                    ghostMesh.position.y = pos.y;
+                }
+
                 checkColl(true);
             } else {
                 // [修复] 如果没对应到墙（比如在地面），也要显示虚影（红色的），并禁止放置
@@ -2411,7 +2456,14 @@ function onMove(e) {
         }
         let onTable = false;
         if (currentItemData.layer === 2) {
-            const surfaceMeshes = placedFurniture.filter(f => f.userData.parentClass && f.userData.parentClass.dbItem && f.userData.parentClass.dbItem.isSurface);
+            const surfaceMeshes = placedFurniture.filter(f => {
+                if (!f.userData.parentClass || !f.userData.parentClass.dbItem) return false;
+                const db = f.userData.parentClass.dbItem;
+                if (db.isSurface) return true;
+                // [New] Allow cushions on beds/sofas
+                if (currentItemData.isCushion && db.canSleep) return true;
+                return false;
+            });
             const hits = raycaster.intersectObjects(surfaceMeshes, true);
             if (hits.length > 0) {
                 const hit = hits[0]; let targetY = hit.point.y;
@@ -3305,6 +3357,9 @@ function startGame() {
                             updateStatusText(`正在恢复家具... (${placedFurniture.length}/${savedData.furniture.length})`);
                             setTimeout(restoreBatch, 50);
                         } else {
+                            // [Fix] Restoration complete
+                            isRestoring = false;
+
                             if (unrestoredFurniture.length > 0) {
                                 console.warn(`[存档恢复] ${unrestoredFurniture.length} 个家具未能恢复，已保留原始数据防止丢失`);
                             }
@@ -3318,6 +3373,7 @@ function startGame() {
                         }
                     }
 
+                    isRestoring = true; // [Fix] Start restoration status
                     restoreBatch();
                 } // end of normal restore (not safeMode, not debug)
             }

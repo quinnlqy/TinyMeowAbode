@@ -844,6 +844,39 @@ export class Cat {
             const randomX = (Math.random() - 0.5) * 0.4;
             localOffset.x += randomX;
 
+            // [New] Avoid Cushion (e.g. White Bird)
+            const placedFurniture = GameContext.placedFurniture;
+            const cushions = placedFurniture.filter(f => {
+                const p = f.userData.parentClass;
+                // Check if it is a cushion and is close to the bed center (on the bed)
+                return p && p.dbItem.isCushion && f.position.distanceTo(this.interactTarget.position) < 1.0;
+            });
+
+            if (cushions.length > 0) {
+                // Determine direction to avoid
+                // For simplicity: If cushion is positive relative X, move negative.
+                // We need to check the cushion's position relative to the bed's local space.
+
+                // Get cushion position in world space
+                const cushionPos = cushions[0].position.clone();
+
+                // Convert to bed's local space is tricky without full scene graph, 
+                // but we can just project the vector onto the bed's right-vector.
+
+                const bedParams = this.interactTarget;
+                const bedRight = new THREE.Vector3(1, 0, 0).applyQuaternion(bedParams.quaternion);
+                const toCushion = new THREE.Vector3().subVectors(cushionPos, bedParams.position);
+
+                const dot = toCushion.dot(bedRight); // Positive = Right side, Negative = Left side
+
+                if (dot > 0) {
+                    localOffset.x = -0.4; // Move left
+                } else {
+                    localOffset.x = 0.4; // Move right
+                }
+                console.log(`[Cat] Found cushion on bed, avoiding to side: ${localOffset.x}`);
+            }
+
             localOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), furnRotation);
             this.mesh.position.add(localOffset);
 
