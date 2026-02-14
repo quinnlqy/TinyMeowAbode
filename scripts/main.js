@@ -97,7 +97,7 @@ const pendingWindowMaterials = [];
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.5";
+window.GAME_VERSION = "v1.6";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
@@ -348,8 +348,16 @@ if (isMobile) {
     document.addEventListener('selectstart', e => e.preventDefault());
     // 阻止 touchmove 引起的页面滚动/橡皮筋效果
     // 但放行商店滚动区和日记面板等可滚动区域
+    // 阻止 touchmove 引起的页面滚动/橡皮筋效果
+    // 但放行商店滚动区、日记面板、说明书、崩溃日志等可滚动区域
     document.addEventListener('touchmove', e => {
-        if (e.target.closest('#items-scroll') || e.target.closest('#diary-entries-scroll') || e.target.closest('#confirm-dialog') || e.target.closest('#time-popover')) return;
+        if (e.target.closest('#items-scroll') ||
+            e.target.closest('#diary-entries-scroll') ||
+            e.target.closest('#confirm-dialog') ||
+            e.target.closest('#time-popover') ||
+            e.target.closest('#manual-content') || // [新增] 说明书
+            e.target.closest('#crash-log-overlay') // [新增] 崩溃日志
+        ) return;
         e.preventDefault();
     }, { passive: false });
 
