@@ -97,7 +97,7 @@ const pendingWindowMaterials = [];
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.9";
+window.GAME_VERSION = "v1.8";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
@@ -3629,12 +3629,22 @@ window.debugRideRobot = function () {
 
 
 // [修改] 滚动条逻辑：支持双向绑定（滚动->动猫头，拖拽猫头->动滚动）
+let isScrollbarInitialized = false; // [新增] 防止重复初始化
 function setupCustomScrollbar() {
     const container = document.getElementById('items-scroll');
     const thumb = document.getElementById('custom-thumb');
     const track = document.getElementById('custom-scrollbar');
 
     if (!container || !thumb || !track) return;
+
+    // [新增] 移除容器上的平滑滚动，防止拖拽时 fight
+    container.style.scrollBehavior = 'auto';
+
+    // 如果已经初始化过，只需要更新一次位置即可 (防止 resize 或内容变化后位置不对)
+    if (isScrollbarInitialized) {
+        updateThumbPosition();
+        return;
+    }
 
     // === 1. 监听内容滚动 -> 移动猫头 ===
     container.onscroll = () => {
@@ -3657,10 +3667,12 @@ function setupCustomScrollbar() {
 
         const ratio = scrollLeft / maxScrollLeft;
         const trackWidth = track.clientWidth;
-        const thumbWidth = 50;
+        // [修复] 使用实际宽度而非硬编码，解决位移偏差
+        const thumbWidth = thumb.offsetWidth || 32;
         const maxLeft = trackWidth - thumbWidth;
 
-        thumb.style.transition = 'left 0.1s linear'; // 自动滚动时要顺滑
+        // [优化] 移除 transition，防止“回弹”感，让滑动更跟手
+        thumb.style.transition = 'none';
         thumb.style.left = (ratio * maxLeft) + 'px';
     }
 
@@ -3674,7 +3686,7 @@ function setupCustomScrollbar() {
         const startX = e.clientX;
         const startLeft = parseFloat(thumb.style.left || 0);
         const trackWidth = track.clientWidth;
-        const thumbWidth = 50;
+        const thumbWidth = thumb.offsetWidth || 32;
         const maxLeft = trackWidth - thumbWidth;
         const maxScrollLeft = container.scrollWidth - container.clientWidth;
 
@@ -3705,11 +3717,15 @@ function setupCustomScrollbar() {
     };
 
     // === 3. 添加鼠标滚轮支持（提升滑动流畅度）===
-    container.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        // 增加滚动速度，让滑动更灵敏
-        container.scrollLeft += e.deltaY * 2; // 乘以2让滚动更快
-    }, { passive: false });
+    // [修复] 检查是否已添加过 listener，防止重复加速
+    if (!container.dataset.wheelListenerAdded) {
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            // 增加滚动速度，让滑动更灵敏
+            container.scrollLeft += e.deltaY * 1.5; // [微调] 速度调整
+        }, { passive: false });
+        container.dataset.wheelListenerAdded = 'true';
+    }
 
     // 设置初始鼠标样式
     thumb.style.cursor = 'grab';
@@ -3718,41 +3734,47 @@ function setupCustomScrollbar() {
     updateThumbPosition();
 
     // === 4. [新增] 触摸事件支持（移动端拖拽滑块）===
-    thumb.addEventListener('touchstart', function (e) {
-        e.preventDefault();
-        thumb.dataset.isDragging = 'true';
-        thumb.style.transition = 'none';
+    // [修复] 同样检查 listener
+    if (!thumb.dataset.touchListenerAdded) {
+        thumb.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            thumb.dataset.isDragging = 'true';
+            thumb.style.transition = 'none';
 
-        const touch = e.touches[0];
-        const startX = touch.clientX;
-        const startLeft = parseFloat(thumb.style.left || 0);
-        const trackWidth = track.clientWidth;
-        const thumbWidth = 50;
-        const maxLeft = trackWidth - thumbWidth;
-        const maxScrollLeft = container.scrollWidth - container.clientWidth;
+            const touch = e.touches[0];
+            const startX = touch.clientX;
+            const startLeft = parseFloat(thumb.style.left || 0);
+            const trackWidth = track.clientWidth;
+            const thumbWidth = thumb.offsetWidth || 32;
+            const maxLeft = trackWidth - thumbWidth;
+            const maxScrollLeft = container.scrollWidth - container.clientWidth;
 
-        function onTouchMove(moveEvent) {
-            const moveTouch = moveEvent.touches[0];
-            const deltaX = moveTouch.clientX - startX;
-            let newLeft = startLeft + deltaX;
+            function onTouchMove(moveEvent) {
+                const moveTouch = moveEvent.touches[0];
+                const deltaX = moveTouch.clientX - startX;
+                let newLeft = startLeft + deltaX;
 
-            if (newLeft < 0) newLeft = 0;
-            if (newLeft > maxLeft) newLeft = maxLeft;
+                if (newLeft < 0) newLeft = 0;
+                if (newLeft > maxLeft) newLeft = maxLeft;
 
-            thumb.style.left = newLeft + 'px';
-            const ratio = newLeft / maxLeft;
-            container.scrollLeft = ratio * maxScrollLeft;
-        }
+                thumb.style.left = newLeft + 'px';
+                const ratio = newLeft / maxLeft;
+                container.scrollLeft = ratio * maxScrollLeft;
+            }
 
-        function onTouchEnd() {
-            thumb.dataset.isDragging = 'false';
-            document.removeEventListener('touchmove', onTouchMove);
-            document.removeEventListener('touchend', onTouchEnd);
-        }
+            function onTouchEnd() {
+                thumb.dataset.isDragging = 'false';
+                document.removeEventListener('touchmove', onTouchMove);
+                document.removeEventListener('touchend', onTouchEnd);
+            }
 
-        document.addEventListener('touchmove', onTouchMove, { passive: false });
-        document.addEventListener('touchend', onTouchEnd);
-    }, { passive: false });
+            document.addEventListener('touchmove', onTouchMove, { passive: false });
+            document.addEventListener('touchend', onTouchEnd);
+        }, { passive: false });
+        thumb.dataset.touchListenerAdded = 'true';
+    }
+
+    isScrollbarInitialized = true;
 }
 
 window.toggleShop = function () {
