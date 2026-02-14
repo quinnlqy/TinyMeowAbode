@@ -97,7 +97,7 @@ const pendingWindowMaterials = [];
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.4";
+window.GAME_VERSION = "v1.5";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
@@ -193,8 +193,34 @@ let attachedItems = [];
 let longPressTimer = null, startPointer = new THREE.Vector2();
 let inputManager = null;
 
-// === [新增] 移动端检测 ===
-const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+// === [新增] 移动端检测 (多重验证) ===
+const isMobile = (function () {
+    const ua = navigator.userAgent;
+
+    // 1. 明确的移动端标识 (Android, iOS, WP, etc)
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/.test(ua) || (ua.includes('Mac') && navigator.maxTouchPoints > 1); // iPadOS
+    const isMobileUA = /Mobi|Tablet|Android|iPhone|iPad/i.test(ua);
+
+    // 2. 屏幕尺寸特征 (手机通常宽度较小)
+    // 注意：有些平板横屏可能比较宽，但台式机通常 > 1024px 且没有 orientation
+    const isSmallScreen = window.innerWidth <= 768 || (window.screen && window.screen.width <= 768);
+
+    // 3. 触摸能力 (辅助判断)
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    // 4. 综合判断
+    // 必须有触摸能力 + (是明确的移动操作系统 OR (是移动UA AND 小屏幕))
+    // 这样排除了：触屏台式机(有Touch但UA是Windows/Mac且屏幕大), 模拟器(可能)
+
+    if (isAndroid || isIOS) return true; // Android/iOS 铁定是移动端
+    if (hasTouch && isMobileUA && isSmallScreen) return true; // 有Touch+MobileUA+小屏 -> 手机浏览器
+
+    // 最后的防线：如果只是有Touch但 UserAgent 很像桌面端(Windows/Mac/Linux)，或者是大屏幕，就认为是桌面
+    return false;
+})();
+
+console.log(`[Device Check] Result: ${isMobile} (UA: ${navigator.userAgent}, Touch: ${navigator.maxTouchPoints}, W: ${window.innerWidth})`);
 
 // === [优化] 手机端贴图降采样（限制最大分辨率） ===
 // 将超过 maxSize 的贴图等比缩小，节省 GPU 显存
