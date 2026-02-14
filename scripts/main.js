@@ -97,7 +97,7 @@ const pendingWindowMaterials = [];
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.8";
+window.GAME_VERSION = "v1.9";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
