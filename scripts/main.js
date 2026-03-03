@@ -97,7 +97,7 @@ const pendingWindowMaterials = [];
 // === 1. 全局配置与变量 ===
 // CAT_CONFIG 已迁移到 ./core/Constants.js
 
-window.GAME_VERSION = "v1.8";
+window.GAME_VERSION = "v1.9";
 console.log(`%c Game Version: ${window.GAME_VERSION} `, 'background: #222; color: #bada55; font-size: 20px;');
 
 // [诊断] 暴露全局查看崩溃日志的方法，手机上可以在控制台或地址栏调用
@@ -1467,6 +1467,19 @@ window.toggleDebugGizmos = function () {
                 line.position.y += db.size.y / 2;
             }
 
+            // [New] Apply sleepOffset to visually represent the sleeping area offset
+            if (db.canSleep && db.sleepOffset) {
+                const gizmoOffset = new THREE.Vector3(
+                    db.sleepOffset.x || 0,
+                    db.sleepOffset.y || 0,
+                    db.sleepOffset.z || 0
+                );
+                // Rotate offset according to furniture rotation to match the world space position shift
+                gizmoOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), line.rotation.y);
+                line.position.add(gizmoOffset);
+                console.log(`[Gizmo] Added offset for ${db.name}:`, gizmoOffset);
+            }
+
             scene.add(line);
             debugHelpers.push(line);
         }
@@ -1795,7 +1808,7 @@ function _doStartPlacement(item) {
 
     // PC端显示放置提示
     if (!isMobile) {
-        Tooltip.show('旋转：点击鼠标中键，或者按键盘 R键。<br>取消：点击鼠标右键。');
+        Tooltip.show('旋转：滚轮中键、R键、E键 (顺时针)，Q键 (逆时针)。<br>取消：鼠标右键。');
     }
 
     // === [新增] 移动端专属逻辑 ===
@@ -2591,8 +2604,8 @@ function onMove(e) {
     }
 }
 
-function rotateItem() {
-    currentRotation += Math.PI / 2;
+function rotateItem(direction = 1) {
+    currentRotation += (direction * Math.PI) / 4; // 改成每次旋转 45 度
     if (ghostMesh) {
         ghostMesh.rotation.y = currentRotation;
 
@@ -3004,7 +3017,13 @@ function startGame() {
                 else deselect();
             },
             onRotateKey: () => {
-                if (ghostMesh && currentItemData.type !== 'wall') rotateItem();
+                if (ghostMesh && currentItemData.type !== 'wall') rotateItem(1);
+            },
+            onRotateCwKey: () => {
+                if (ghostMesh && currentItemData.type !== 'wall') rotateItem(1);
+            },
+            onRotateCcwKey: () => {
+                if (ghostMesh && currentItemData.type !== 'wall') rotateItem(-1);
             },
             onCameraReset: () => {
                 // [新增] 视角复位回调
@@ -3417,7 +3436,46 @@ function startGame() {
         }
 
 
+        // === [新增] GM指令：一分钟自动日夜循环 (在控制台输入 debugDayNightCycle() )
+        window.debugDayNightCycle = function () {
+            console.log("[GM] 启动日夜轮回，耗时 1 分钟");
+            updateStatusText("开始自动日夜轮回 (1分钟)");
+            isTimeAuto = false;
 
+            const hudSlider = document.getElementById('time-slider-hud');
+            const timeResetBtn = document.getElementById('time-reset-btn');
+            if (timeResetBtn) timeResetBtn.style.color = '#999';
+
+            const duration = 60000; // 60秒
+            const interval = 50;    // 每 50ms 更新一次
+            const steps = duration / interval; // 1200步
+            const timeStep = 24 / steps; // 每次更新现实几小时
+            let elapsed = 0;
+
+            clearInterval(window._autoTimeCycleTimer);
+            window._autoTimeCycleTimer = setInterval(() => {
+                elapsed += interval;
+
+                visualHour += timeStep;
+                if (visualHour >= 24) {
+                    visualHour -= 24;
+                }
+
+                if (hudSlider) hudSlider.value = visualHour;
+
+                if (typeof weatherSystem !== 'undefined' && weatherSystem) {
+                    weatherSystem.setTimeInstant(visualHour);
+                }
+
+                if (elapsed >= duration) {
+                    clearInterval(window._autoTimeCycleTimer);
+                    updateStatusText("日夜轮回演示结束");
+                    console.log("[GM] 日夜轮回结束");
+                    isTimeAuto = true;
+                    if (timeResetBtn) timeResetBtn.style.color = '#2ecc71';
+                }
+            }, interval);
+        };
 
         window.addEventListener('resize', onWindowResize);
         // 输入事件已由 InputManager 管理
@@ -3434,7 +3492,7 @@ function startGame() {
 
             document.getElementById('btn-mobile-rotate').onclick = () => {
                 if (ghostMesh && (mode === 'placing_new' || mode === 'moving_old')) {
-                    currentRotation += Math.PI / 2;
+                    currentRotation += Math.PI / 4; // 改成每次旋转 45 度
                     ghostMesh.rotation.y = currentRotation;
                     // [修复] 旋转后立即进行碰撞检测，更新状态
                     checkColl(currentItemData.type === 'wall');

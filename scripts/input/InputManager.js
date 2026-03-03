@@ -34,6 +34,8 @@ export class InputManager {
             onPointerMove: null,
             onRightClick: null,
             onRotateKey: null,
+            onRotateCwKey: null,
+            onRotateCcwKey: null,
             onCameraReset: null
         };
 
@@ -176,12 +178,27 @@ export class InputManager {
 
         const key = e.key.toLowerCase();
 
-        // R 键旋转
+        // R 键旋转 (向右)
         if (key === 'r') {
             if (this.callbacks.onRotateKey) {
                 this.callbacks.onRotateKey();
             }
             return;
+        }
+
+        // Q 键旋转 (向左)
+        if (key === 'q') {
+            if (this.callbacks.onRotateCcwKey) {
+                this.callbacks.onRotateCcwKey();
+            }
+            return;
+        }
+
+        // E 键旋转 (向右)
+        if (key === 'e') {
+            if (this.callbacks.onRotateCwKey) {
+                this.callbacks.onRotateCwKey();
+            }
             return;
         }
 

@@ -877,6 +877,15 @@ export class Cat {
                 console.log(`[Cat] Found cushion on bed, avoiding to side: ${localOffset.x}`);
             }
 
+            // [New] Apply sleepOffset from dbItem to shift forward/backward or sideways to avoid backrests
+            const dbItem = this.interactTarget.userData.parentClass.dbItem;
+            if (dbItem.sleepOffset) {
+                localOffset.x += dbItem.sleepOffset.x || 0;
+                localOffset.y += dbItem.sleepOffset.y || 0;
+                localOffset.z += dbItem.sleepOffset.z || 0;
+                console.log(`[Cat] Applying sleepOffset:`, dbItem.sleepOffset);
+            }
+
             localOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), furnRotation);
             this.mesh.position.add(localOffset);
 
